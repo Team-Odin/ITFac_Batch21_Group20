@@ -1,0 +1,30 @@
+{
+  "name": "qa-training-app-tests",
+  "version": "1.0.0",
+  "description": "This repository contains a test automation framework built using Cypress and Cucumber for UI and API testing.",
+  "homepage": "https://github.com/Team-Odin/qa-training-app-tests#readme",
+  "bugs": {
+    "url": "https://github.com/Team-Odin/qa-training-app-tests/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Team-Odin/qa-training-app-tests.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "",
+  "scripts": {
+    "test": "cypress run",
+    "open": "cypress open",
+    "clean": "rm -rf cypress/screenshots cypress/videos"
+  },
+  "devDependencies": {
+    "@badeball/cypress-cucumber-preprocessor": "^24.0.0",
+    "@bahmutov/cypress-esbuild-preprocessor": "^2.2.8",
+    "cypress": "^15.8.2",
+    "dotenv": "^17.2.3",
+    "esbuild": "^0.27.2",
+    "wait-on": "^9.0.3"
+  }
+}
