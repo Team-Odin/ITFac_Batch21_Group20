@@ -74,6 +74,8 @@ module.exports = defineConfig({
             `--server.port=${port}`,
             `--spring.datasource.password=${process.env.DB_PASSWORD}`,
             `--api.base-url=${process.env.API_BASE_URL}`,
+            `--spring.datasource.username=${process.env.DB_USERNAME}`,
+            `--spring.datasource.url=${process.env.DB_URL}`
           ],
           { stdio: "inherit" }
         );

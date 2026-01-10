@@ -6,7 +6,7 @@ A test automation framework built with Cypress and Cucumber for UI and API testi
 
 - **Node.js 18+** installed
 - **Java 17+** installed and available on PATH
-- **MySQL Server** running on localhost:3306 with database `qa_training`
+- **MySQL Server** (local or remote) with database `qa_training`
 
 ## Project Setup
 
@@ -32,8 +32,19 @@ cp .env.example .env
 Edit `.env` and update the values:
 
 ```env
-API_BASE_URL=http://localhost:8080
-DB_PASSWORD=YourActualDatabasePassword
+DB_USERNAME="root"
+DB_PASSWORD="YourActualPassword"
+DB_URL="jdbc:mysql://localhost:3306/qa_training?useSSL=false&allowPublicKeyRetrieval=true"
+API_BASE_URL="http://localhost:8080"
+```
+
+**For remote database:**
+
+```env
+DB_USERNAME="your_db_username"
+DB_PASSWORD="your_db_password"
+DB_URL="jdbc:mysql://remote-host:3306/qa_training?useSSL=false&allowPublicKeyRetrieval=true"
+API_BASE_URL="http://localhost:8080"
 ```
 
 ### 3. Install dependencies
@@ -44,11 +55,17 @@ npm install
 
 ### 4. Database setup
 
+**For local database:**
+
 Ensure MySQL is running and create the database if it doesn't exist:
 
 ```sql
 CREATE DATABASE IF NOT EXISTS qa_training;
 ```
+
+**For remote database:**
+
+Ensure you have the correct host, port, username, and password. The database should already exist on the remote server.
 
 The application will auto-create tables on first run using JPA.
 
@@ -62,9 +79,10 @@ npm start
 
 This will:
 
-- Load database credentials from `.env`
+- Load database connection details (URL, username, password) from `.env`
+- Connect to your configured MySQL database (local or remote)
 - Start the application on port 8080
-- Initialize the database schema
+- Initialize the database schema automatically
 
 **Access the application:**
 
@@ -151,10 +169,12 @@ qa-training-app-tests/
 
 ### Database connection errors
 
-- Verify MySQL service is running
-- Check database `qa_training` exists
-- Confirm credentials in `.env` match MySQL user
-- Test connection: `mysql -u root -p -e "SHOW DATABASES;"`
+- Verify MySQL service is running (locally or remote host is accessible)
+- Check database `qa_training` exists on the server
+- Confirm `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` in `.env` are correct
+- For local: Test connection with `mysql -u root -p -e "SHOW DATABASES;"`
+- For remote: Check network connectivity and firewall rules
+- Ensure special characters in password are not causing issues (wrap values in quotes in `.env` if needed)
 
 ## Contributing
 
