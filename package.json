@@ -17,7 +17,8 @@
   "scripts": {
     "test": "cypress run",
     "open": "cypress open",
-    "clean": "rm -rf cypress/screenshots cypress/videos"
+    "clean": "rm -rf cypress/screenshots cypress/videos",
+    "start": "node run-app.js"
   },
   "devDependencies": {
     "@badeball/cypress-cucumber-preprocessor": "^24.0.0",
