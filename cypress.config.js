@@ -44,6 +44,13 @@ module.exports = defineConfig({
   e2e: {
     specPattern: "**/*.feature",
     baseUrl: targetUrl,
+    env: {
+      stepDefinitions: [
+        "cypress/e2e/**/[filepath].steps.{js,mjs,ts,tsx}",
+        "cypress/e2e/**/[filepath]/**/*.{js,mjs,ts,tsx}",
+        "cypress/support/step_definitions/**/*.{js,mjs,ts,tsx}",
+      ],
+    },
 
     async setupNodeEvents(on, config) {
       await addCucumberPreprocessorPlugin(on, config);
@@ -77,7 +84,7 @@ module.exports = defineConfig({
             `--spring.datasource.password=${process.env.DB_PASSWORD}`,
             `--api.base-url=${process.env.API_BASE_URL}`,
             `--spring.datasource.username=${process.env.DB_USERNAME}`,
-            `--spring.datasource.url=${process.env.DB_URL}`
+            `--spring.datasource.url=${process.env.DB_URL}`,
           ],
           { stdio: "inherit" }
         );
