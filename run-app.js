@@ -4,10 +4,10 @@ const path = require("path");
 
 // Load .env file
 const envPath = path.join(__dirname, ".env");
-let dbPassword = "Password123!"; // default
-let dbUsername = "root"; // default
+let dbPassword = "T|ez)@-fqVHEPaKf"; // default
+let dbUsername = "teamodin"; // default
 let dbUrl =
-  "jdbc:mysql://localhost:3306/qa_training?useSSL=false&allowPublicKeyRetrieval=true"; // default
+  "jdbc:mysql://136.119.111.245:3306/qa_training?useSSL=false&allowPublicKeyRetrieval=true"; // default
 
 if (fs.existsSync(envPath)) {
   const envContent = fs.readFileSync(envPath, "utf-8");

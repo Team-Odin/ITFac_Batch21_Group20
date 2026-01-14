@@ -6,6 +6,7 @@ const {
 const {
   createEsbuildPlugin,
 } = require("@badeball/cypress-cucumber-preprocessor/esbuild");
+const allureWriter = require("@shelex/cypress-allure-plugin/writer");
 const { spawn } = require("child_process");
 const waitOn = require("wait-on");
 const path = require("path");
@@ -46,6 +47,7 @@ module.exports = defineConfig({
 
     async setupNodeEvents(on, config) {
       await addCucumberPreprocessorPlugin(on, config);
+      allureWriter(on, config);
       on(
         "file:preprocessor",
         createBundler({ plugins: [createEsbuildPlugin(config)] })
