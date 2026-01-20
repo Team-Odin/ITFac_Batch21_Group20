@@ -10,3 +10,7 @@ Feature: Category Management Module
 
     Scenario: UI/TC01 Verify Add Category button visibility
         Then I should see the "Add Category" button
+
+    Scenario: UI/TC02 Verify "Add Category" Page Navigation
+        When Click the "Add A Category" button
+        Then System redirect to "/ui/categories/add"
