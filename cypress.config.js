@@ -7,10 +7,10 @@ const {
   createEsbuildPlugin,
 } = require("@badeball/cypress-cucumber-preprocessor/esbuild");
 const allureWriter = require("@shelex/cypress-allure-plugin/writer");
-const { spawn } = require("child_process");
+const { spawn } = require("node:child_process");
 const waitOn = require("wait-on");
-const path = require("path");
-const fs = require("fs");
+const path = require("node:path");
+const fs = require("node:fs");
 
 require("dotenv").config();
 const targetUrl = process.env.API_BASE_URL || "http://localhost:8080";
@@ -20,9 +20,7 @@ try {
   const u = new URL(targetUrl);
   host = u.hostname || host;
   port = u.port || port;
-} catch (e) {
-  // keep defaults
-}
+} catch (e) {}
 
 let javaProcess;
 let spawnedByCypress = false;
@@ -33,7 +31,7 @@ const resolveJavaCmd = () => {
     const candidate = path.join(
       javaHome,
       "bin",
-      process.platform === "win32" ? "java.exe" : "java"
+      process.platform === "win32" ? "java.exe" : "java",
     );
     if (fs.existsSync(candidate)) return candidate;
   }
@@ -41,8 +39,16 @@ const resolveJavaCmd = () => {
 };
 
 module.exports = defineConfig({
+  video: false,
+  defaultCommandTimeout: 5000,
+  pageLoadTimeout: 10000,
+  reporter: "mocha-allure-reporter",
+  reporterOptions: {
+    resultsDir: "allure-results",
+    clean: true,
+  },
   e2e: {
-    specPattern: "**/*.feature",
+    specPattern: "cypress/e2e/**/*.feature",
     baseUrl: targetUrl,
     env: {
       stepDefinitions: [
@@ -57,17 +63,19 @@ module.exports = defineConfig({
       allureWriter(on, config);
       on(
         "file:preprocessor",
-        createBundler({ plugins: [createEsbuildPlugin(config)] })
+        createBundler({ plugins: [createEsbuildPlugin(config)] }),
       );
 
       // Ensure server is running BEFORE Cypress verifies baseUrl
       const ensureServer = async () => {
         try {
-          await waitOn({ resources: [`tcp:${host}:${port}`], timeout: 1200 });
+          await waitOn({
+            resources: [`tcp:${host}:${port}`],
+            timeout: 1000,
+            log: false,
+          });
           return; // already up
-        } catch (_) {
-          // fallthrough to spawn
-        }
+        } catch (e) {}
 
         console.log("Booting up JAR with custom properties...");
 
@@ -86,17 +94,14 @@ module.exports = defineConfig({
             `--spring.datasource.username=${process.env.DB_USERNAME}`,
             `--spring.datasource.url=${process.env.DB_URL}`,
           ],
-          { stdio: "inherit" }
+          { stdio: "inherit" },
         );
         javaProcess.on("error", (err) => {
-          console.error(
-            "Java spawn error:",
-            err && err.message ? err.message : err
-          );
+          console.error("Java spawn error:", err.message);
         });
         javaProcess.on("exit", (code, signal) => {
           console.error(
-            `Java process exited early code=${code} signal=${signal}`
+            `Java process exited early code=${code} signal=${signal}`,
           );
         });
         spawnedByCypress = true;
@@ -106,7 +111,9 @@ module.exports = defineConfig({
           await waitOn({ resources: [`tcp:${host}:${port}`], timeout: 60000 });
           console.log("✅ Server Ready!");
         } catch (err) {
-          console.error(`❌ Server at tcp:${host}:${port} failed to start.`);
+          console.error(
+            `❌ Server at tcp:${host}:${port} failed to start. ${err}`,
+          );
           if (javaProcess) javaProcess.kill();
           process.exit(1);
         }
@@ -119,6 +126,16 @@ module.exports = defineConfig({
         console.log("🛑 Stopping Local JAR...");
         if (spawnedByCypress && javaProcess) javaProcess.kill();
       });
+
+      // Make .env values available to test code via Cypress.env(...)
+      // Supports both plain names (ADMIN_USER) and Cypress-prefixed (CYPRESS_ADMIN_USER).
+      config.env = {
+        ...config.env,
+        ADMIN_USER: process.env.ADMIN_USER ?? process.env.CYPRESS_ADMIN_USER,
+        ADMIN_PASS: process.env.ADMIN_PASS ?? process.env.CYPRESS_ADMIN_PASS,
+        USER_USER: process.env.USER_USER ?? process.env.CYPRESS_USER_USER,
+        USER_PASS: process.env.USER_PASS ?? process.env.CYPRESS_USER_PASS,
+      };
 
       return config;
     },

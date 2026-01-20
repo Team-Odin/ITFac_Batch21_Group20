@@ -1,0 +1,17 @@
+name: Cypress Tests & Allure Report
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  cypress-run:
+    runs-on: ubuntu-latest
+    # steps:
