@@ -27,10 +27,10 @@
     "@bahmutov/cypress-esbuild-preprocessor": "^2.2.8",
     "@shelex/cypress-allure-plugin": "^2.41.2",
     "allure-commandline": "^2.36.0",
-    "mocha-allure-reporter": "^1.4.0",
     "cypress": "^15.8.2",
     "dotenv": "^17.2.3",
     "esbuild": "^0.27.2",
+    "mocha-allure-reporter": "^1.4.0",
     "wait-on": "^9.0.3"
   }
 }

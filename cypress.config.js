@@ -20,9 +20,7 @@ try {
   const u = new URL(targetUrl);
   host = u.hostname || host;
   port = u.port || port;
-} catch (e) {
-  console.log(e);
-}
+} catch (e) {}
 
 let javaProcess;
 let spawnedByCypress = false;
@@ -50,7 +48,7 @@ module.exports = defineConfig({
     clean: true,
   },
   e2e: {
-    specPattern: "**/*.feature",
+    specPattern: "cypress/e2e/**/*.feature",
     baseUrl: targetUrl,
     env: {
       stepDefinitions: [
@@ -71,11 +69,13 @@ module.exports = defineConfig({
       // Ensure server is running BEFORE Cypress verifies baseUrl
       const ensureServer = async () => {
         try {
-          await waitOn({ resources: [`tcp:${host}:${port}`], timeout: 1200 });
+          await waitOn({
+            resources: [`tcp:${host}:${port}`],
+            timeout: 1000,
+            log: false,
+          });
           return; // already up
-        } catch (e) {
-          console.log(e);
-        }
+        } catch (e) {}
 
         console.log("Booting up JAR with custom properties...");
 
@@ -97,10 +97,7 @@ module.exports = defineConfig({
           { stdio: "inherit" },
         );
         javaProcess.on("error", (err) => {
-          console.error(
-            "Java spawn error:",
-            err && err.message ? err.message : err,
-          );
+          console.error("Java spawn error:", err.message);
         });
         javaProcess.on("exit", (code, signal) => {
           console.error(
@@ -114,7 +111,9 @@ module.exports = defineConfig({
           await waitOn({ resources: [`tcp:${host}:${port}`], timeout: 60000 });
           console.log("✅ Server Ready!");
         } catch (err) {
-          console.error(`❌ Server at tcp:${host}:${port} failed to start.`);
+          console.error(
+            `❌ Server at tcp:${host}:${port} failed to start. ${err}`,
+          );
           if (javaProcess) javaProcess.kill();
           process.exit(1);
         }
@@ -127,6 +126,16 @@ module.exports = defineConfig({
         console.log("🛑 Stopping Local JAR...");
         if (spawnedByCypress && javaProcess) javaProcess.kill();
       });
+
+      // Make .env values available to test code via Cypress.env(...)
+      // Supports both plain names (ADMIN_USER) and Cypress-prefixed (CYPRESS_ADMIN_USER).
+      config.env = {
+        ...config.env,
+        ADMIN_USER: process.env.ADMIN_USER ?? process.env.CYPRESS_ADMIN_USER,
+        ADMIN_PASS: process.env.ADMIN_PASS ?? process.env.CYPRESS_ADMIN_PASS,
+        USER_USER: process.env.USER_USER ?? process.env.CYPRESS_USER_USER,
+        USER_PASS: process.env.USER_PASS ?? process.env.CYPRESS_USER_PASS,
+      };
 
       return config;
     },
