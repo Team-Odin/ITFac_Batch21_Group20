@@ -14,3 +14,11 @@ Feature: Category Management Module
     Scenario: UI/TC02 Verify "Add Category" Page Navigation
         When Click the "Add A Category" button
         Then System redirect to "/ui/categories/add"
+
+    Scenario: UI/TC03 Verify Creating a Main Category
+        Given I am on the "Add Category" page
+        When Enter "Fruits" in "Category Name"
+        And Leave "Parent Category" empty
+        And Click "Save"
+        Then  System redirects to the list "Fruits" appears in the category table
+        And  Show "Category created successfully" message
