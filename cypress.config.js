@@ -7,10 +7,10 @@ const {
   createEsbuildPlugin,
 } = require("@badeball/cypress-cucumber-preprocessor/esbuild");
 const allureWriter = require("@shelex/cypress-allure-plugin/writer");
-const { spawn } = require("child_process");
+const { spawn } = require("node:child_process");
 const waitOn = require("wait-on");
-const path = require("path");
-const fs = require("fs");
+const path = require("node:path");
+const fs = require("node:fs");
 
 require("dotenv").config();
 const targetUrl = process.env.API_BASE_URL || "http://localhost:8080";
@@ -21,7 +21,7 @@ try {
   host = u.hostname || host;
   port = u.port || port;
 } catch (e) {
-  // keep defaults
+  console.log(e);
 }
 
 let javaProcess;
@@ -33,7 +33,7 @@ const resolveJavaCmd = () => {
     const candidate = path.join(
       javaHome,
       "bin",
-      process.platform === "win32" ? "java.exe" : "java"
+      process.platform === "win32" ? "java.exe" : "java",
     );
     if (fs.existsSync(candidate)) return candidate;
   }
@@ -41,6 +41,14 @@ const resolveJavaCmd = () => {
 };
 
 module.exports = defineConfig({
+  video: false,
+  defaultCommandTimeout: 5000,
+  pageLoadTimeout: 10000,
+  reporter: "mocha-allure-reporter",
+  reporterOptions: {
+    resultsDir: "allure-results",
+    clean: true,
+  },
   e2e: {
     specPattern: "**/*.feature",
     baseUrl: targetUrl,
@@ -57,7 +65,7 @@ module.exports = defineConfig({
       allureWriter(on, config);
       on(
         "file:preprocessor",
-        createBundler({ plugins: [createEsbuildPlugin(config)] })
+        createBundler({ plugins: [createEsbuildPlugin(config)] }),
       );
 
       // Ensure server is running BEFORE Cypress verifies baseUrl
@@ -65,8 +73,8 @@ module.exports = defineConfig({
         try {
           await waitOn({ resources: [`tcp:${host}:${port}`], timeout: 1200 });
           return; // already up
-        } catch (_) {
-          // fallthrough to spawn
+        } catch (e) {
+          console.log(e);
         }
 
         console.log("Booting up JAR with custom properties...");
@@ -86,17 +94,17 @@ module.exports = defineConfig({
             `--spring.datasource.username=${process.env.DB_USERNAME}`,
             `--spring.datasource.url=${process.env.DB_URL}`,
           ],
-          { stdio: "inherit" }
+          { stdio: "inherit" },
         );
         javaProcess.on("error", (err) => {
           console.error(
             "Java spawn error:",
-            err && err.message ? err.message : err
+            err && err.message ? err.message : err,
           );
         });
         javaProcess.on("exit", (code, signal) => {
           console.error(
-            `Java process exited early code=${code} signal=${signal}`
+            `Java process exited early code=${code} signal=${signal}`,
           );
         });
         spawnedByCypress = true;
