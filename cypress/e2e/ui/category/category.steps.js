@@ -10,6 +10,51 @@ import { categoryPage } from "../../../support/pages/categoryPage";
 import { addCategoryPage } from "../../../support/pages/addCategoryPage";
 
 let createdMainCategoryName;
+let createdSubCategoryName;
+let createdParentCategoryName;
+
+// Utility function to delete category by name
+const deleteCategoryByName = (categoryName, authHeader) => {
+  return cy
+    .request({
+      method: "GET",
+      url: "/api/categories/page?page=0&size=200&sort=id,desc",
+      headers: { Authorization: authHeader },
+      failOnStatusCode: false,
+    })
+    .then((res) => {
+      const content = res?.body?.content;
+      const match = Array.isArray(content)
+        ? content.find(
+            (c) =>
+              String(c?.name).toLowerCase() ===
+              String(categoryName).toLowerCase(),
+          )
+        : undefined;
+
+      if (!match?.id) {
+        cy.log(
+          `Cleanup: category '${categoryName}' not found; skipping delete`,
+        );
+        return;
+      }
+
+      cy.request({
+        method: "DELETE",
+        url: `/api/categories/${match.id}`,
+        headers: { Authorization: authHeader },
+        failOnStatusCode: false,
+      }).then((delRes) => {
+        if (![200, 202, 204].includes(delRes.status)) {
+          cy.log(
+            `Cleanup: delete returned ${delRes.status} for '${categoryName}' (id=${match.id})`,
+          );
+        } else {
+          cy.log(`Successfully cleaned up category: ${categoryName}`);
+        }
+      });
+    });
+};
 
 const apiLoginAsAdmin = () => {
   const username = Cypress.env("ADMIN_USER");
@@ -44,50 +89,47 @@ Before((info) => {
 
 After((info) => {
   const scenarioName = info?.pickle?.name ?? "";
-  const shouldCleanup =
+
+  // Cleanup for TC03 (main category)
+  const shouldCleanupTC03 =
     scenarioName.includes("UI/TC03") && Boolean(createdMainCategoryName);
 
-  if (!shouldCleanup) return;
+  // Cleanup for TC04 (subcategory and parent)
+  const shouldCleanupTC04 =
+    scenarioName.includes("UI/TC04") &&
+    (Boolean(createdSubCategoryName) || Boolean(createdParentCategoryName));
 
-  const nameToDelete = createdMainCategoryName;
-  createdMainCategoryName = undefined;
+  if (!shouldCleanupTC03 && !shouldCleanupTC04) return;
 
   apiLoginAsAdmin().then((authHeader) => {
-    cy.request({
-      method: "GET",
-      url: "/api/categories/page?page=0&size=200&sort=id,desc",
-      headers: { Authorization: authHeader },
-      failOnStatusCode: false,
-    }).then((res) => {
-      const content = res?.body?.content;
-      const match = Array.isArray(content)
-        ? content.find(
-            (c) =>
-              String(c?.name).toLowerCase() ===
-              String(nameToDelete).toLowerCase(),
-          )
-        : undefined;
+    if (shouldCleanupTC04) {
+      // Delete subcategory first (child before parent)
+      if (createdSubCategoryName) {
+        deleteCategoryByName(createdSubCategoryName, authHeader).then(() => {
+          createdSubCategoryName = undefined;
 
-      if (!match?.id) {
-        cy.log(
-          `Cleanup: category '${nameToDelete}' not found; skipping delete`,
-        );
-        return;
+          // Delete parent category after subcategory is deleted
+          if (createdParentCategoryName) {
+            deleteCategoryByName(createdParentCategoryName, authHeader).then(
+              () => {
+                createdParentCategoryName = undefined;
+              },
+            );
+          }
+        });
+      } else if (createdParentCategoryName) {
+        // Only parent needs deletion
+        deleteCategoryByName(createdParentCategoryName, authHeader).then(() => {
+          createdParentCategoryName = undefined;
+        });
       }
+    }
 
-      cy.request({
-        method: "DELETE",
-        url: `/api/categories/${match.id}`,
-        headers: { Authorization: authHeader },
-        failOnStatusCode: false,
-      }).then((delRes) => {
-        if (![200, 202, 204].includes(delRes.status)) {
-          cy.log(
-            `Cleanup: delete returned ${delRes.status} for '${nameToDelete}' (id=${match.id})`,
-          );
-        }
+    if (shouldCleanupTC03 && createdMainCategoryName) {
+      deleteCategoryByName(createdMainCategoryName, authHeader).then(() => {
+        createdMainCategoryName = undefined;
       });
-    });
+    }
   });
 });
 
@@ -156,11 +198,17 @@ Then("System redirect to {string}", (path) => {
 // =============================================================
 
 When("Enter {string} in {string}", (categoryValue, _categoryField) => {
-  createdMainCategoryName = categoryValue;
-  addCategoryPage.categoryNameField
-    .should("be.visible")
-    .clear()
-    .type(categoryValue);
+  const scenarioName = Cypress.currentTest?.title || "";
+
+  if (scenarioName.includes("UI/TC03")) {
+    // This is for TC03 main category
+    createdMainCategoryName = categoryValue;
+  } else if (scenarioName.includes("UI/TC04")) {
+    // This is for TC04 subcategory
+    createdSubCategoryName = categoryValue;
+  }
+
+  addCategoryPage.addACategory(categoryValue);
 });
 
 When("Leave {string} empty", (_parentCategory) => {});
@@ -194,3 +242,55 @@ Then(
 Then("Show {string} message", (successMessage) => {
   cy.contains(successMessage, { timeout: 10000 }).should("be.visible");
 });
+
+// =============================================================
+// UI/TC04 Verify Creating a Sub-Category
+// =============================================================
+
+Given("{string} category exists", (categoryName) => {
+  categoryPage.visitCategoryPage();
+
+  categoryPage.checkCategoryExists(categoryName).then((exists) => {
+    if (!exists) {
+      cy.log(`Category '${categoryName}' not found, creating it via UI`);
+      createdParentCategoryName = categoryName;
+
+      categoryPage.addCategoryBtn.should("be.visible").click();
+      addCategoryPage.createCategory(categoryName);
+
+      cy.location("pathname", { timeout: 10000 }).should(
+        "eq",
+        "/ui/categories",
+      );
+      categoryPage.verifyCategoryInTable(categoryName);
+    } else {
+      cy.log(`Category '${categoryName}' already exists in the table`);
+    }
+  });
+
+  addCategoryPage.visitAddCategoryPage();
+});
+
+When("Select {string} from {string}", (optionValue, fieldName) => {
+  if (fieldName.toLowerCase().includes("parent category")) {
+    // Interact with the parent category dropdown/select field
+    addCategoryPage.parentCategoryField
+      .should("be.visible")
+      .select(optionValue);
+  } else {
+    throw new Error(`Unknown field for selection: ${fieldName}`);
+  }
+});
+
+Then(
+  "{string} is saved and linked to {string}",
+  (subCategoryName, parentCategoryName) => {
+    categoryPage.verifyParentChildRelationship(
+      subCategoryName,
+      parentCategoryName,
+    );
+    cy.log(
+      `Verified in UI: '${subCategoryName}' is linked to '${parentCategoryName}'`,
+    );
+  },
+);

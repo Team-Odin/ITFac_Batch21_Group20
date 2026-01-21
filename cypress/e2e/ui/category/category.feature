@@ -22,3 +22,12 @@ Feature: Category Management Module
         And Click "Save"
         Then  System redirects to the list "Fruits" appears in the category table
         And  Show "Category created successfully" message
+
+    Scenario: UI/TC04 Verify Creating a Sub Category
+        Given I am on the "Add Category" page
+        Given "Fruits" category exists
+        When Enter "Apple" in "Category Name"
+        And Select "Fruits" from "Parent Category"
+        And Click "Save"
+        Then System redirects to the list "Apple" appears in the category table
+        And "Apple" is saved and linked to "Fruits"
