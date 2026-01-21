@@ -7,6 +7,10 @@ class CategoryPage {
     return cy.contains("a", "Next");
   }
 
+  get categoriesTable() {
+    return cy.get("table");
+  }
+
   visit() {
     cy.visit("/ui/categories");
   }
@@ -15,14 +19,89 @@ class CategoryPage {
     this.visit();
   }
 
+  openWithMinimumCategories(minCount) {
+    this.visitCategoryPage();
+    this.ensureMinimumCategories(minCount);
+    this.pagination.should("be.visible");
+  }
+
+  assertOnCategoriesPage() {
+    cy.location("pathname", { timeout: 10000 }).should("eq", "/ui/categories");
+  }
+
+  assertCategoryTableHasData() {
+    this.assertOnCategoriesPage();
+    this.categoriesTable.should("be.visible");
+
+    cy.get("table tbody tr").should("exist");
+    cy.get("table tbody tr")
+      .first()
+      .within(() => {
+        cy.get("td").should("not.contain", "No category found");
+      });
+  }
+
+  clickNextPage() {
+    return this.getNextButton()
+      .should("be.visible")
+      .parent(".page-item")
+      .should("not.have.class", "disabled")
+      .find("a")
+      .click();
+  }
+
+  clickPreviousPage() {
+    return this.getPreviousButton()
+      .should("be.visible")
+      .parent(".page-item")
+      .should("not.have.class", "disabled")
+      .find("a")
+      .click();
+  }
+
+  clickPagination(direction) {
+    const dir = String(direction).trim().toLowerCase();
+
+    if (dir === "next") return this.clickNextPage();
+    if (dir === "previous") return this.clickPreviousPage();
+
+    throw new Error(`Unknown pagination direction: ${direction}`);
+  }
+
+  captureTopRowsSnapshot(maxRows = 3) {
+    return cy.get("table tbody tr").then(($rows) => {
+      const limit = Math.min(Number(maxRows) || 0, $rows.length);
+      return Array.from($rows)
+        .slice(0, limit)
+        .map((r) => String(r.innerText).replaceAll(/\s+/g, " ").trim());
+    });
+  }
+
+  goToPage(targetPageNumber) {
+    const target = Number.parseInt(String(targetPageNumber).trim(), 10);
+
+    if (!Number.isFinite(target) || target < 1) {
+      throw new Error(`Invalid page number: ${targetPageNumber}`);
+    }
+
+    if (target === 1) {
+      this.checkActivePageNumber("1");
+      return;
+    }
+
+    for (let i = 1; i < target; i++) {
+      this.scrollToBottom();
+      this.clickNextPage();
+      this.checkActivePageNumber(String(i + 1));
+    }
+  }
+
   checkCategoryExists(categoryName) {
+    const name = String(categoryName);
+
     return cy.get("body").then(($body) => {
-      if ($body.find("table").length > 0) {
-        return cy.get("table tbody").then(($tbody) => {
-          return $tbody.find(`td:contains("${categoryName}")`).length > 0;
-        });
-      }
-      return false;
+      if ($body.find("table").length === 0) return false;
+      return $body.find(`table tbody td:contains("${name}")`).length > 0;
     });
   }
 
@@ -54,7 +133,7 @@ class CategoryPage {
   }
 
   ensureMinimumCategories(minCount) {
-    const minimumRequired = parseInt(minCount);
+    const minimumRequired = Number.parseInt(minCount, 10);
 
     // Check if pagination exists, which indicates we have enough categories
     return cy.get("body").then(($body) => {

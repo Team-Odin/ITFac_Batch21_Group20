@@ -318,45 +318,13 @@ When("Scroll bottom of the list", () => {
 });
 
 When("Click {string} pagination", (direction) => {
-  if (direction.toLowerCase() === "next") {
-    categoryPage.nextPageBtn
-      .should("be.visible")
-      .parent("li")
-      .should("not.have.class", "disabled")
-      .find("a")
-      .click();
-  } else if (direction.toLowerCase() === "previous") {
-    cy.contains("a.page-link", "Previous")
-      .should("be.visible")
-      .parent("li")
-      .should("not.have.class", "disabled")
-      .find("a")
-      .click();
-  } else {
-    throw new Error(`Unknown pagination direction: ${direction}`);
-  }
+  categoryPage.clickPagination(direction);
 });
 
 Then("The list refreshes to show the next set of category records", () => {
-  // Wait for page to load
   cy.wait(1000);
-
-  // Verify we're still on categories page
-  cy.location("pathname").should("eq", "/ui/categories");
-
-  // Verify table is still visible with data
-  cy.get("table").should("be.visible");
-
-  // Verify pagination controls are present
   categoryPage.pagination.should("be.visible");
-
-  // Verify we have category data (not empty state)
-  cy.get("table tbody tr").should("exist");
-  cy.get("table tbody tr")
-    .first()
-    .within(() => {
-      cy.get("td").should("not.contain", "No category found");
-    });
+  categoryPage.assertCategoryTableHasData();
 
   cy.log("Successfully navigated to next page of categories");
 });
@@ -419,16 +387,7 @@ Then("{string} button is enabled", (buttonName) => {
 // =============================================================
 
 Then("The table refreshes with new data", () => {
-  // Verify table is visible with rows
-  cy.location("pathname", { timeout: 10000 }).should("eq", "/ui/categories");
-  cy.get("table", { timeout: 10000 }).should("be.visible");
-
-  cy.get("table tbody tr").should("exist");
-  cy.get("table tbody tr")
-    .first()
-    .within(() => {
-      cy.get("td").should("not.contain", "No category found");
-    });
+  categoryPage.assertCategoryTableHasData();
 
   cy.log("Verified category table refreshed with data");
 });
@@ -467,30 +426,14 @@ Given("I am on the {string} page {string}", (pageName, pageNumber) => {
     page === "category" ||
     page.includes("categories")
   ) {
-    categoryPage.visitCategoryPage();
-    categoryPage.ensureMinimumCategories("10");
-    categoryPage.pagination.should("be.visible");
+    categoryPage.openWithMinimumCategories("10");
+    categoryPage.goToPage("1");
 
-    // Capture page-1 snapshot to compare after navigating back
-    cy.get("table tbody tr")
-      .should("exist")
-      .then(($rows) => {
-        page1RowsSnapshot = Array.from($rows)
-          .slice(0, Math.min(3, $rows.length))
-          .map((r) => String(r.innerText).replace(/\s+/g, " ").trim());
-      });
+    categoryPage.captureTopRowsSnapshot(3).then((snapshot) => {
+      page1RowsSnapshot = snapshot;
+    });
 
-    // Navigate to requested page number (this scenario uses "2")
-    if (targetPageNumber !== "1") {
-      categoryPage.scrollToBottom();
-      categoryPage.nextPageBtn
-        .should("be.visible")
-        .parent("li")
-        .should("not.have.class", "disabled")
-        .find("a")
-        .click();
-      categoryPage.checkActivePageNumber(targetPageNumber);
-    }
+    categoryPage.goToPage(targetPageNumber);
 
     return;
   }
@@ -503,18 +446,10 @@ Given("I am on the {string} page {string}", (pageName, pageNumber) => {
 Then("The table refreshes with original data", () => {
   expect(page1RowsSnapshot, "page 1 snapshot should be set").to.exist;
 
-  cy.location("pathname", { timeout: 10000 }).should("eq", "/ui/categories");
-  cy.get("table", { timeout: 10000 }).should("be.visible");
-
-  cy.get("table tbody tr")
-    .should("exist")
-    .then(($rows) => {
-      const current = Array.from($rows)
-        .slice(0, Math.min(3, $rows.length))
-        .map((r) => String(r.innerText).replace(/\s+/g, " ").trim());
-
-      expect(current).to.deep.equal(page1RowsSnapshot);
-    });
+  categoryPage.assertCategoryTableHasData();
+  categoryPage.captureTopRowsSnapshot(3).then((current) => {
+    expect(current).to.deep.equal(page1RowsSnapshot);
+  });
 
   cy.log("Verified table returned to original page-1 data");
 });
