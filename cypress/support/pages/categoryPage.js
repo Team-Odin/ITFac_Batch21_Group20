@@ -102,6 +102,12 @@ class CategoryPage {
       .should("have.class", "disabled");
   }
 
+  checkPreviousButtonEnabled() {
+    return this.getPreviousButton()
+      .parent(".page-item")
+      .should("not.have.class", "disabled");
+  }
+
   checkNextButtonEnabled() {
     return this.getNextButton()
       .parent(".page-item")

@@ -12,6 +12,7 @@ import { addCategoryPage } from "../../../support/pages/addCategoryPage";
 let createdMainCategoryName;
 let createdSubCategoryName;
 let createdParentCategoryName;
+let page1RowsSnapshot;
 
 // Utility function to delete category by name
 const deleteCategoryByName = (categoryName, authHeader) => {
@@ -411,4 +412,109 @@ Then("{string} button is enabled", (buttonName) => {
   } else {
     throw new Error(`Enable check not implemented for button: ${buttonName}`);
   }
+});
+
+// =============================================================
+// UI/TC07 Verify "Next" Button Navigation
+// =============================================================
+
+Then("The table refreshes with new data", () => {
+  // Verify table is visible with rows
+  cy.location("pathname", { timeout: 10000 }).should("eq", "/ui/categories");
+  cy.get("table", { timeout: 10000 }).should("be.visible");
+
+  cy.get("table tbody tr").should("exist");
+  cy.get("table tbody tr")
+    .first()
+    .within(() => {
+      cy.get("td").should("not.contain", "No category found");
+    });
+
+  cy.log("Verified category table refreshed with data");
+});
+
+Then("The active page indicator changes to {string}", (pageNumber) => {
+  categoryPage.checkActivePageNumber(pageNumber);
+  cy.log(`Verified active page indicator is ${pageNumber}`);
+});
+
+Then("The {string} button becomes enabled", (buttonName) => {
+  if (buttonName.toLowerCase() === "previous") {
+    categoryPage.checkPreviousButtonEnabled();
+    cy.log("Verified that Previous button is enabled");
+    return;
+  }
+
+  if (buttonName.toLowerCase() === "next") {
+    categoryPage.checkNextButtonEnabled();
+    cy.log("Verified that Next button is enabled");
+    return;
+  }
+
+  throw new Error(`Enable check not implemented for button: ${buttonName}`);
+});
+
+// =============================================================
+// UI/TC08 Verify "Previous" Button Navigation
+// =============================================================
+
+Given("I am on the {string} page {string}", (pageName, pageNumber) => {
+  const page = String(pageName).trim().toLowerCase();
+  const targetPageNumber = String(pageNumber).trim();
+
+  if (
+    page === "categories" ||
+    page === "category" ||
+    page.includes("categories")
+  ) {
+    categoryPage.visitCategoryPage();
+    categoryPage.ensureMinimumCategories("10");
+    categoryPage.pagination.should("be.visible");
+
+    // Capture page-1 snapshot to compare after navigating back
+    cy.get("table tbody tr")
+      .should("exist")
+      .then(($rows) => {
+        page1RowsSnapshot = Array.from($rows)
+          .slice(0, Math.min(3, $rows.length))
+          .map((r) => String(r.innerText).replace(/\s+/g, " ").trim());
+      });
+
+    // Navigate to requested page number (this scenario uses "2")
+    if (targetPageNumber !== "1") {
+      categoryPage.scrollToBottom();
+      categoryPage.nextPageBtn
+        .should("be.visible")
+        .parent("li")
+        .should("not.have.class", "disabled")
+        .find("a")
+        .click();
+      categoryPage.checkActivePageNumber(targetPageNumber);
+    }
+
+    return;
+  }
+
+  throw new Error(
+    `Unknown page name/path for numbered navigation: ${pageName}`,
+  );
+});
+
+Then("The table refreshes with original data", () => {
+  expect(page1RowsSnapshot, "page 1 snapshot should be set").to.exist;
+
+  cy.location("pathname", { timeout: 10000 }).should("eq", "/ui/categories");
+  cy.get("table", { timeout: 10000 }).should("be.visible");
+
+  cy.get("table tbody tr")
+    .should("exist")
+    .then(($rows) => {
+      const current = Array.from($rows)
+        .slice(0, Math.min(3, $rows.length))
+        .map((r) => String(r.innerText).replace(/\s+/g, " ").trim());
+
+      expect(current).to.deep.equal(page1RowsSnapshot);
+    });
+
+  cy.log("Verified table returned to original page-1 data");
 });

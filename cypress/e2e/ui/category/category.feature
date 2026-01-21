@@ -55,3 +55,19 @@ Feature: Category Management Module
         And "Previous" button is disabled
         And "Next" button is enabled
 
+    @UI/TC07
+    Scenario: UI/TC07 Verify "Next" Button Navigation
+        Given I am on the "Categories" page
+        And with more than "10" categories exists
+        When Click "Next" pagination
+        Then The table refreshes with new data
+        And The active page indicator changes to "2"
+        And The "Previous" button becomes enabled
+
+    @UI/TC08
+    Scenario: UI/TC03 Verify "Previous" Button Navigation
+        Given I am on the "Categories" page "2"
+        When Click "Previous" pagination
+        Then The table refreshes with original data
+        And The active page indicator changes to "1"
+
