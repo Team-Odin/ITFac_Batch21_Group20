@@ -41,6 +41,14 @@ class CategoryPage {
       });
   }
 
+  getCategoryTableRows() {
+    return cy.get("table tbody tr");
+  }
+
+  getCategoryRowCount() {
+    return this.getCategoryTableRows().then(($rows) => $rows.length);
+  }
+
   clickNextPage() {
     return this.getNextButton()
       .should("be.visible")

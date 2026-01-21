@@ -65,9 +65,21 @@ Feature: Category Management Module
         And The "Previous" button becomes enabled
 
     @UI/TC08
-    Scenario: UI/TC03 Verify "Previous" Button Navigation
+    Scenario: UI/TC08 Verify "Previous" Button Navigation
         Given I am on the "Categories" page "2"
         When Click "Previous" pagination
         Then The table refreshes with original data
         And The active page indicator changes to "1"
+
+    @UI/TC09
+    Scenario: UI/TC09 Verify Row Count Per Page
+        Given I am on the "Categories" page
+        When  Count the number of category rows displayed in the table on "1"
+        Then The count matches the system default (e.g., exactly "10" rows)
+
+    # @UI/TC10 
+    # Scenario: UI/TC10 Verify Last Page State
+    # Given I am on the last page of "Categories"
+    # When observe the "Next" button
+    # Then The "Next" button is disabled (greyed out) or hidden 
 

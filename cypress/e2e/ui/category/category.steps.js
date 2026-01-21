@@ -13,6 +13,7 @@ let createdMainCategoryName;
 let createdSubCategoryName;
 let createdParentCategoryName;
 let page1RowsSnapshot;
+let categoryRowCount;
 
 // Utility function to delete category by name
 const deleteCategoryByName = (categoryName, authHeader) => {
@@ -453,3 +454,29 @@ Then("The table refreshes with original data", () => {
 
   cy.log("Verified table returned to original page-1 data");
 });
+
+// =============================================================
+// UI/TC09 Verify Row Count Per Page
+// =============================================================
+
+When(
+  "Count the number of category rows displayed in the table on {string}",
+  (pageNumber) => {
+    categoryPage.goToPage(pageNumber);
+    categoryPage.assertCategoryTableHasData();
+    categoryPage.getCategoryRowCount().then((count) => {
+      categoryRowCount = count;
+      cy.log(`Row count on page ${String(pageNumber)}: ${count}`);
+    });
+  },
+);
+
+Then(
+  "The count matches the system default \\(e.g., exactly {string} rows\\)",
+  (expectedCount) => {
+    expect(categoryRowCount, "row count should be captured").to.be.a("number");
+
+    const expected = Number.parseInt(String(expectedCount).trim(), 10);
+    expect(categoryRowCount).to.eq(expected);
+  },
+);
