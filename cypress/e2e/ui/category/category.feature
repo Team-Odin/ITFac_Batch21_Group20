@@ -19,7 +19,7 @@ Feature: Category Management Module
         Given I am on the "Add Category" page
         When Enter "Fruits" in "Category Name"
         And Leave "Parent Category" empty
-        And Click "Save"
+        And Click "Save" button
         Then  System redirects to the list "Fruits" appears in the category table
         And  Show "Category created successfully" message
 
@@ -28,6 +28,13 @@ Feature: Category Management Module
         Given "Fruits" category exists
         When Enter "Apple" in "Category Name"
         And Select "Fruits" from "Parent Category"
-        And Click "Save"
+        And Click "Save" button
         Then System redirects to the list "Apple" appears in the category table
         And "Apple" is saved and linked to "Fruits"
+
+    Scenario: UI/TC05 Verify Pagination Functionality
+        Given I am on the "Categories" page
+        And with more than "10" categories exists
+        When Scroll bottom of the list
+        And Click "Next" pagination
+        Then The list refreshes to show the next set of category records

@@ -213,8 +213,12 @@ When("Enter {string} in {string}", (categoryValue, _categoryField) => {
 
 When("Leave {string} empty", (_parentCategory) => {});
 
-When("Click {string}", (_saveBtnText) => {
-  addCategoryPage.submitBtn.should("be.visible").click();
+When("Click {string} button", (buttonText) => {
+  if (buttonText.toLowerCase() === "save") {
+    addCategoryPage.submitBtn.should("be.visible").click();
+  } else {
+    throw new Error(`Unknown button: ${buttonText}`);
+  }
 });
 
 Then(
@@ -294,3 +298,64 @@ Then(
     );
   },
 );
+
+// =============================================================
+// UI/TC05 Verify Pagination Functionality
+// =============================================================
+
+Given("with more than {string} categories exists", (minCount) => {
+  categoryPage.ensureMinimumCategories(minCount);
+
+  // Verify pagination is visible after ensuring minimum categories
+  categoryPage.pagination.should("be.visible");
+  cy.log("Pagination is available - sufficient categories exist");
+});
+
+When("Scroll bottom of the list", () => {
+  categoryPage.scrollToBottom();
+  cy.wait(500); // Allow time for any lazy loading or rendering
+});
+
+When("Click {string} pagination", (direction) => {
+  if (direction.toLowerCase() === "next") {
+    categoryPage.nextPageBtn
+      .should("be.visible")
+      .parent("li")
+      .should("not.have.class", "disabled")
+      .find("a")
+      .click();
+  } else if (direction.toLowerCase() === "previous") {
+    cy.contains("a.page-link", "Previous")
+      .should("be.visible")
+      .parent("li")
+      .should("not.have.class", "disabled")
+      .find("a")
+      .click();
+  } else {
+    throw new Error(`Unknown pagination direction: ${direction}`);
+  }
+});
+
+Then("The list refreshes to show the next set of category records", () => {
+  // Wait for page to load
+  cy.wait(1000);
+
+  // Verify we're still on categories page
+  cy.location("pathname").should("eq", "/ui/categories");
+
+  // Verify table is still visible with data
+  cy.get("table").should("be.visible");
+
+  // Verify pagination controls are present
+  categoryPage.pagination.should("be.visible");
+
+  // Verify we have category data (not empty state)
+  cy.get("table tbody tr").should("exist");
+  cy.get("table tbody tr")
+    .first()
+    .within(() => {
+      cy.get("td").should("not.contain", "No category found");
+    });
+
+  cy.log("Successfully navigated to next page of categories");
+});
