@@ -359,3 +359,56 @@ Then("The list refreshes to show the next set of category records", () => {
 
   cy.log("Successfully navigated to next page of categories");
 });
+
+// =============================================================
+// UI/TC06 Verify Default Pagination State
+// =============================================================
+
+When("Observe the pagination controls at the bottom of the table", () => {
+  // Scroll to bottom to ensure pagination is visible
+  categoryPage.scrollToBottom();
+
+  // Verify pagination controls are visible
+  categoryPage.pagination.should("be.visible");
+  cy.log("Pagination controls are visible and ready for inspection");
+});
+
+When("Check the {string} button status", (buttonName) => {
+  if (buttonName.toLowerCase() === "previous") {
+    categoryPage.getPreviousButton().should("be.visible");
+    cy.log("Previous button visibility confirmed");
+  } else if (buttonName.toLowerCase() === "next") {
+    categoryPage.getNextButton().should("be.visible");
+    cy.log("Next button visibility confirmed");
+  } else {
+    throw new Error(`Unknown button: ${buttonName}`);
+  }
+});
+
+When("Check which page number is highlighted", () => {
+  categoryPage.getActivePageNumber().should("be.visible");
+  cy.log("Active page number element is visible and highlighted");
+});
+
+Then("{string} is highlighted", (pageNumber) => {
+  categoryPage.checkActivePageNumber(pageNumber);
+  cy.log(`Verified that page ${pageNumber} is highlighted/active`);
+});
+
+Then("{string} button is disabled", (buttonName) => {
+  if (buttonName.toLowerCase() === "previous") {
+    categoryPage.checkPreviousButtonDisabled();
+    cy.log("Verified that Previous button is disabled");
+  } else {
+    throw new Error(`Disable check not implemented for button: ${buttonName}`);
+  }
+});
+
+Then("{string} button is enabled", (buttonName) => {
+  if (buttonName.toLowerCase() === "next") {
+    categoryPage.checkNextButtonEnabled();
+    cy.log("Verified that Next button is enabled");
+  } else {
+    throw new Error(`Enable check not implemented for button: ${buttonName}`);
+  }
+});

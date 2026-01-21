@@ -83,6 +83,36 @@ class CategoryPage {
       }
     });
   }
+
+  getPreviousButton() {
+    return this.pagination.find('a:contains("Previous")');
+  }
+
+  getNextButton() {
+    return this.pagination.find('a:contains("Next")');
+  }
+
+  getActivePageNumber() {
+    return this.pagination.find(".page-item.active .page-link");
+  }
+
+  checkPreviousButtonDisabled() {
+    return this.getPreviousButton()
+      .parent(".page-item")
+      .should("have.class", "disabled");
+  }
+
+  checkNextButtonEnabled() {
+    return this.getNextButton()
+      .parent(".page-item")
+      .should("not.have.class", "disabled");
+  }
+
+  checkActivePageNumber(expectedPageNumber) {
+    return this.getActivePageNumber()
+      .should("be.visible")
+      .should("contain.text", expectedPageNumber);
+  }
 }
 
 export const categoryPage = new CategoryPage();
