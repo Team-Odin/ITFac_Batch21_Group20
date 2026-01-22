@@ -12,9 +12,24 @@ Feature: Category Management Module
             """
             {
                 "name": "API_Main",
-                "parentId": null
+                "parent": null
             }
             """
         Then Status Code: 201 Created
         And Response contains "name": "API_Main"
+
+    @API/TC17
+    Scenario: API/TC17 Verify Create Sub Category API
+        Given Admin has valid JWT token
+        And parent "Fruits" exists
+        And Endpoint: "/api/categories"
+        When Send POST request with body:
+            """
+            {
+                "name": "API_Sub",
+                "parent": "Fruits"
+            }
+            """
+        Then Status Code: 201 Created
+        And Response contains "name": "API_Sub" and "parent": "Fruits"
 
