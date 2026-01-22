@@ -53,7 +53,7 @@ Feature: Category Management Module
             }
             """
         Then Status Code: 400 Bad Request
-        And Error message: "Category name is mandatory"
+        And Error message: "Category name is required"
 
     @API/TC20
     Scenario: API/TC20 Verify Create Validation: Name Too Long
@@ -68,4 +68,12 @@ Feature: Category Management Module
             """
         Then Status Code: 400 Bad Request
         And Error message: "Category name must be between 3 and 10 characters"
+
+    @API/TC21
+    Scenario: API/TC21 Verify Basic Pagination
+        Given Admin has valid JWT token
+        And  "10"+ Categories exist
+        When Send GET request: "/api/categories/page?page=0&size=5"
+        Then Status Code: 200 OK
+        And  Response contains exactly 5 category records
 

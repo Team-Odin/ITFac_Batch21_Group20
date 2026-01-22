@@ -16,6 +16,7 @@ let createdParentCategoryName;
 let createdParentByTest;
 let expectedCategoryId;
 let expectedCategoryName;
+let createdCategoryIdsForTc21;
 
 After((info) => {
   const scenarioName = info?.pickle?.name ?? "";
@@ -51,6 +52,31 @@ After((info) => {
         createdParentByTest = undefined;
       });
     }
+  });
+});
+
+After((info) => {
+  const scenarioName = info?.pickle?.name ?? "";
+  const shouldCleanupTc21 =
+    scenarioName.includes("API/TC21") &&
+    Array.isArray(createdCategoryIdsForTc21) &&
+    createdCategoryIdsForTc21.length > 0;
+
+  if (!shouldCleanupTc21) return;
+  if (!authHeader) return;
+
+  const ids = [...createdCategoryIdsForTc21];
+  createdCategoryIdsForTc21 = undefined;
+
+  return cy.wrap(ids, { log: false }).each((id) => {
+    const categoryId = Number(id);
+    if (!Number.isFinite(categoryId)) return;
+    return cy.request({
+      method: "DELETE",
+      url: `/api/categories/${categoryId}`,
+      headers: { Authorization: authHeader },
+      failOnStatusCode: false,
+    });
   });
 });
 
@@ -511,4 +537,85 @@ Then("Field error {string}: {string}", (fieldName, expectedMessage) => {
   // Fallback to generic message search (covers alternate error shapes)
   const messages = collectErrorMessages(lastResponse.body);
   expect(messages.join("\n")).to.include(expected);
+});
+
+// =============================================================
+// API/TC21 Verify Basic Pagination
+// =============================================================
+
+Given(/"(\d+)"\+\s*Categories exist/, (count) => {
+  if (!authHeader) {
+    throw new Error("Missing authHeader; run JWT token step first");
+  }
+
+  const n = Number(count);
+  if (!Number.isFinite(n) || n < 1) {
+    throw new TypeError(`Invalid category count: '${String(count)}'`);
+  }
+
+  createdCategoryIdsForTc21 = [];
+  // Category name validation is 3..10 chars (backend constraint).
+  // Keep names short but unique enough for the test run.
+  const runId = String(Date.now() % 10000).padStart(4, "0");
+
+  // Create N main categories (parent null) so pagination has enough records.
+  return cy.wrap(Array.from({ length: n }), { log: false }).each((_, idx) => {
+    const name = `T21${runId}${idx}`; // e.g. T2101230
+    return cy
+      .request({
+        method: "POST",
+        url: "/api/categories",
+        headers: { Authorization: authHeader },
+        body: { name, parent: null },
+        failOnStatusCode: false,
+      })
+      .then((res) => {
+        if (![200, 201].includes(res.status)) {
+          throw new Error(
+            `Failed to create category '${name}'. Status: ${res.status} Body: ${JSON.stringify(res.body)}`,
+          );
+        }
+        if (res?.body?.id != null) createdCategoryIdsForTc21.push(res.body.id);
+      });
+  });
+});
+
+When("Send GET request: {string}", (rawEndpoint) => {
+  if (!authHeader) {
+    throw new Error("Missing authHeader; run JWT token step first");
+  }
+
+  endpoint = categoryPage.constructor.normalizeEndpoint(rawEndpoint);
+
+  return cy
+    .request({
+      method: "GET",
+      url: endpoint,
+      headers: { Authorization: authHeader },
+      failOnStatusCode: false,
+    })
+    .then((res) => {
+      lastResponse = res;
+    });
+});
+
+Then("Response contains exactly {int} category records", (expectedCount) => {
+  expect(lastResponse, "lastResponse should exist").to.exist;
+  expect(lastResponse.body, "response body").to.exist;
+
+  const n = Number(expectedCount);
+  let content;
+  if (Array.isArray(lastResponse?.body?.content)) {
+    content = lastResponse.body.content;
+  } else if (Array.isArray(lastResponse.body)) {
+    content = lastResponse.body;
+  }
+
+  if (!content) {
+    throw new Error(
+      `Expected a paged response with 'content' array, got: ${JSON.stringify(lastResponse.body)}`,
+    );
+  }
+
+  expect(content.length).to.eq(n);
 });
