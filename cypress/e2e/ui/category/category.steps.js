@@ -18,6 +18,7 @@ let createdParentCategoryName;
 let page1RowsSnapshot;
 let categoryRowCount;
 let selectedParentFilterName;
+let actionsColumnIndex;
 
 const findCategoryByName = (categories, categoryName) => {
   const target = String(categoryName).toLowerCase();
@@ -766,6 +767,64 @@ Then("List updates to show only children of the selected parent", () => {
         .replaceAll(/\s+/g, " ")
         .trim();
       expect(parentCellText).to.eq(String(selectedParentFilterName).trim());
+    });
+  });
+});
+
+// =============================================================
+// UI/TC14 Verify Edit Action Hidden for Non admin User
+// =============================================================
+
+When('Inspect the "Actions" column of the category table', () => {
+  categoryPage.assertOnCategoriesPage();
+  categoryPage.categoriesTable.should("be.visible");
+
+  cy.get("table thead tr th").then(($ths) => {
+    const headers = Array.from($ths).map((th) =>
+      String(th.innerText).replaceAll(/\s+/g, " ").trim().toLowerCase(),
+    );
+
+    actionsColumnIndex = headers.findIndex((h) => h === "actions");
+    expect(actionsColumnIndex, "Actions column index").to.be.greaterThan(-1);
+  });
+});
+
+Then("Edit icon are either hidden or visually disabled", () => {
+  categoryPage.assertOnCategoriesPage();
+  categoryPage.categoriesTable.should("be.visible");
+
+  cy.get("table tbody tr").each(($row) => {
+    const $tds = Cypress.$($row).find("td");
+
+    // Skip empty-state row
+    if ($tds.length === 1 && Cypress.$($tds[0]).attr("colspan")) return;
+    if ($tds.length === 0) return;
+
+    const idx = Number.isInteger(actionsColumnIndex)
+      ? actionsColumnIndex
+      : $tds.length - 1;
+    const $actionsCell = Cypress.$($tds[idx]);
+
+    // The template uses title="Edit"; also keep href fallback for resilience.
+    const $editLinks = $actionsCell.find(
+      'a[title="Edit"], a[href*="/ui/categories/edit"]',
+    );
+
+    // Hidden case: nothing to assert beyond non-existence.
+    if ($editLinks.length === 0) return;
+
+    // Disabled case: element exists but should be disabled via attribute/class.
+    cy.wrap($editLinks[0]).should(($el) => {
+      const $a = Cypress.$($el);
+      const hasDisabledAttr =
+        $a.is("[disabled]") || $a.attr("aria-disabled") === "true";
+      const className = String($a.attr("class") || "");
+      const hasDisabledClass = className.split(/\s+/g).includes("disabled");
+
+      expect(
+        hasDisabledAttr || hasDisabledClass,
+        "Edit action should be hidden or disabled for non-admin",
+      ).to.eq(true);
     });
   });
 });

@@ -114,4 +114,11 @@ Feature: Category Management Module
         When Select a parent from the "Parent Category" filter dropdown
         And Click "Search" button
         Then List updates to show only children of the selected parent
+    
+    @UI/TC14
+    Scenario: UI/TC14 Verify Edit Action Hidden for Non admin User
+        Given I am logged in as User
+        And I am on the "Categories" page
+        When Inspect the "Actions" column of the category table
+        Then Edit icon are either hidden or visually disabled 
 
