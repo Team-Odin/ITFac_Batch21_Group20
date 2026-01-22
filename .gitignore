@@ -5,3 +5,4 @@ cypress/screenshots/
 .env
 allure-results/
 allure-report/
+_jar_extract/
