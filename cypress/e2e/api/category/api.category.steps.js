@@ -69,6 +69,10 @@ Given("Endpoint: {string}", (rawEndpoint) => {
   endpoint = categoryPage.constructor.normalizeEndpoint(rawEndpoint);
 });
 
+// =============================================================
+// API/TC17 Verify Create Sub Category API
+// =============================================================
+
 Given("parent {string} exists", (parentName) => {
   if (!categoryPage) {
     throw new Error("Missing categoryPage; run JWT token step first");
@@ -80,6 +84,10 @@ Given("parent {string} exists", (parentName) => {
     createdParentCategoryName = parentName;
   });
 });
+
+// =============================================================
+// API/TC18 Verify Get Category By ID
+// =============================================================
 
 Given("Category ID {string} exists", (id) => {
   if (!categoryPage) {
@@ -390,4 +398,117 @@ Then("Response contains correct id and name for that category", () => {
 
   expect(Number(lastResponse.body.id)).to.eq(Number(expectedCategoryId));
   expect(String(lastResponse.body.name)).to.eq(String(expectedCategoryName));
+});
+
+// =============================================================
+// API/TC19 Verify Create Validation: Empty Name
+// =============================================================
+
+Then("Status Code: {int} Bad Request", (expectedStatus) => {
+  expect(lastResponse, "lastResponse should exist").to.exist;
+  expect(lastResponse.status).to.eq(Number(expectedStatus));
+});
+
+function collectErrorMessages(body) {
+  if (body == null) return [];
+  if (typeof body === "string") return [body];
+
+  const messages = [];
+
+  // Nested validation details (current backend shape)
+  if (
+    typeof body === "object" &&
+    Object.hasOwn(body, "details") &&
+    body.details &&
+    typeof body.details === "object"
+  ) {
+    for (const value of Object.values(body.details)) {
+      if (value != null) messages.push(String(value));
+    }
+  }
+
+  const directKeys = ["message", "error", "detail", "title"]; // common API error shapes
+  for (const key of directKeys) {
+    if (Object.hasOwn(body, key) && body[key] != null) {
+      messages.push(String(body[key]));
+    }
+  }
+
+  const arrays = ["errors", "violations", "fieldErrors"];
+  for (const key of arrays) {
+    const arr = Object.hasOwn(body, key) ? body[key] : undefined;
+    if (Array.isArray(arr)) {
+      for (const item of arr) {
+        if (item == null) continue;
+        if (typeof item === "string") {
+          messages.push(item);
+          continue;
+        }
+        if (typeof item === "object") {
+          for (const k of [
+            "defaultMessage",
+            "message",
+            "error",
+            "reason",
+            "field",
+          ]) {
+            if (Object.hasOwn(item, k) && item[k] != null) {
+              messages.push(String(item[k]));
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // fallback: stringify object (avoid huge circulars)
+  try {
+    messages.push(JSON.stringify(body));
+  } catch {
+    // ignore
+  }
+
+  return messages.filter(Boolean);
+}
+
+Then("Error message: {string}", (expectedMessage) => {
+  expect(lastResponse, "lastResponse should exist").to.exist;
+  expect(lastResponse.body, "response body").to.exist;
+
+  const expected = String(expectedMessage);
+  const messages = collectErrorMessages(lastResponse.body);
+  const haystack = messages.join("\n");
+
+  expect(
+    haystack,
+    `Expected validation message to include: '${expected}'. Actual error payload: ${haystack}`,
+  ).to.include(expected);
+});
+
+// =============================================================
+// API/TC20 Verify Create Validation: Name Too Long
+// =============================================================
+
+Then("Field error {string}: {string}", (fieldName, expectedMessage) => {
+  expect(lastResponse, "lastResponse should exist").to.exist;
+  expect(lastResponse.body, "response body").to.exist;
+
+  const field = String(fieldName).trim();
+  const expected = String(expectedMessage);
+
+  const details =
+    lastResponse.body &&
+    typeof lastResponse.body === "object" &&
+    Object.hasOwn(lastResponse.body, "details")
+      ? lastResponse.body.details
+      : undefined;
+
+  if (details && typeof details === "object" && Object.hasOwn(details, field)) {
+    expect(String(details[field])).to.include(expected);
+    return;
+  }
+
+  // Fallback to generic message search (covers alternate error shapes)
+  const messages = collectErrorMessages(lastResponse.body);
+  expect(messages.join("\n")).to.include(expected);
 });

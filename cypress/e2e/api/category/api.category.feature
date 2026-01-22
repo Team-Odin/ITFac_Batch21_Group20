@@ -40,3 +40,32 @@ Feature: Category Management Module
         When Send GET request to: "/api/categories/1"
         Then Status Code: 200 OK
         And Response contains correct id and name for that category
+
+    @API/TC19
+    Scenario: API/TC19 Verify Create Validation: Empty Name
+        Given Admin has valid JWT token
+        And Endpoint: "/api/categories"
+        When Send POST request with body:
+            """
+            {
+                "name": "",
+                "parent": null
+            }
+            """
+        Then Status Code: 400 Bad Request
+        And Error message: "Category name is mandatory"
+
+    @API/TC20
+    Scenario: API/TC20 Verify Create Validation: Name Too Long
+        Given Admin has valid JWT token
+        And Endpoint: "/api/categories"
+        When Send POST request with body:
+            """
+            {
+                "name": "SuperMarket",
+                "parent": null
+            }
+            """
+        Then Status Code: 400 Bad Request
+        And Error message: "Category name must be between 3 and 10 characters"
+
