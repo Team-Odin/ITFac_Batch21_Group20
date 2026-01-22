@@ -98,4 +98,12 @@ Feature: Category Management Module
         When Scan top action area of the page
         Then The "Add Category" button is NOT present
 
+    @UI/TC12
+    Scenario: UI/TC12 Verify Search by Name
+        Given I am logged in as User
+        And I am on the "Categories" page
+        And "Fruits" category exists
+        When Enter "Fruits" in search bar
+        And Click "Search"
+        Then List update display only the "Fruits" category
 

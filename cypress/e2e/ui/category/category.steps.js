@@ -18,6 +18,54 @@ let createdParentCategoryName;
 let page1RowsSnapshot;
 let categoryRowCount;
 
+const findCategoryByName = (categories, categoryName) => {
+  const target = String(categoryName).toLowerCase();
+  if (!Array.isArray(categories)) return undefined;
+  return categories.find(
+    (c) => String(c?.name).toLowerCase() === String(target),
+  );
+};
+
+const ensureCategoryExists = (categoryName) => {
+  const name = String(categoryName);
+
+  return apiLoginAsAdmin().then((authHeader) => {
+    return cy
+      .request({
+        method: "GET",
+        url: "/api/categories/page?page=0&size=200&sort=id,desc",
+        headers: { Authorization: authHeader },
+        failOnStatusCode: false,
+      })
+      .then((res) => {
+        const match = findCategoryByName(res?.body?.content, name);
+        if (match?.id) {
+          cy.log(`Category '${name}' already exists (id=${match.id})`);
+          return;
+        }
+
+        cy.log(`Category '${name}' not found; creating via API as Admin`);
+        createdParentCategoryName = name;
+
+        return cy
+          .request({
+            method: "POST",
+            url: "/api/categories",
+            headers: { Authorization: authHeader },
+            body: { name, parentId: null },
+            failOnStatusCode: false,
+          })
+          .then((createRes) => {
+            if (![200, 201, 202, 204].includes(createRes.status)) {
+              throw new Error(
+                `Failed to create category '${name}' via API. Status: ${createRes.status}`,
+              );
+            }
+          });
+      });
+  });
+};
+
 // Utility function to delete category by name
 const deleteCategoryByName = (categoryName, authHeader) => {
   return cy
@@ -104,7 +152,11 @@ After((info) => {
     scenarioName.includes("UI/TC04") &&
     (Boolean(createdSubCategoryName) || Boolean(createdParentCategoryName));
 
-  if (!shouldCleanupTC03 && !shouldCleanupTC04) return;
+  // Cleanup for TC12 (search precondition may create a category via API)
+  const shouldCleanupTC12 =
+    scenarioName.includes("UI/TC12") && Boolean(createdParentCategoryName);
+
+  if (!shouldCleanupTC03 && !shouldCleanupTC04 && !shouldCleanupTC12) return;
 
   apiLoginAsAdmin().then((authHeader) => {
     if (shouldCleanupTC04) {
@@ -133,6 +185,12 @@ After((info) => {
     if (shouldCleanupTC03 && createdMainCategoryName) {
       deleteCategoryByName(createdMainCategoryName, authHeader).then(() => {
         createdMainCategoryName = undefined;
+      });
+    }
+
+    if (shouldCleanupTC12 && createdParentCategoryName) {
+      deleteCategoryByName(createdParentCategoryName, authHeader).then(() => {
+        createdParentCategoryName = undefined;
       });
     }
   });
@@ -261,27 +319,19 @@ Then("Show {string} message", (successMessage) => {
 // =============================================================
 
 Given("{string} category exists", (categoryName) => {
-  categoryPage.visitCategoryPage();
+  cy.location("pathname").then((startPath) => {
+    return ensureCategoryExists(categoryName).then(() => {
+      // Preserve calling test context:
+      // - TC04 calls this from Add Category page and expects to return there.
+      // - TC12 calls this from Categories page and should stay there.
+      if (String(startPath).startsWith("/ui/categories/add")) {
+        addCategoryPage.visitAddCategoryPage();
+        return;
+      }
 
-  categoryPage.checkCategoryExists(categoryName).then((exists) => {
-    if (!exists) {
-      cy.log(`Category '${categoryName}' not found, creating it via UI`);
-      createdParentCategoryName = categoryName;
-
-      categoryPage.addCategoryBtn.should("be.visible").click();
-      addCategoryPage.createCategory(categoryName);
-
-      cy.location("pathname", { timeout: 10000 }).should(
-        "eq",
-        "/ui/categories",
-      );
-      categoryPage.verifyCategoryInTable(categoryName);
-    } else {
-      cy.log(`Category '${categoryName}' already exists in the table`);
-    }
+      categoryPage.visitCategoryPage();
+    });
   });
-
-  addCategoryPage.visitAddCategoryPage();
 });
 
 When("Select {string} from {string}", (optionValue, fieldName) => {
@@ -573,4 +623,53 @@ Then("The {string} button is NOT present", (buttonText) => {
 
   // Fallback: if a different button text is used, try a simple text lookup.
   cy.contains("a,button", normalized).should("not.exist");
+});
+
+// =============================================================
+// UI/TC12 Verify Search by Name
+// =============================================================
+
+When("Enter {string} in search bar", (searchText) => {
+  categoryPage.assertOnCategoriesPage();
+  categoryPage.searchNameInput.should("be.visible").clear().type(searchText);
+});
+
+When("Click {string}", (controlText) => {
+  const t = String(controlText).replaceAll(/\s+/g, " ").trim().toLowerCase();
+
+  if (t === "search") {
+    categoryPage.searchBtn.should("be.visible").click();
+    return;
+  }
+
+  if (t === "reset") {
+    categoryPage.resetBtn.should("be.visible").click();
+    return;
+  }
+
+  throw new Error(`Unknown control to click: ${JSON.stringify(controlText)}`);
+});
+
+Then("List update display only the {string} category", (expectedCategory) => {
+  const expected = String(expectedCategory).trim();
+
+  categoryPage.assertOnCategoriesPage();
+  categoryPage.categoriesTable.should("be.visible");
+
+  cy.get("table tbody tr").then(($rows) => {
+    const dataRows = Array.from($rows).filter(
+      (row) => Cypress.$(row).find("td[colspan]").length === 0,
+    );
+
+    expect(dataRows.length, "data rows after search").to.be.greaterThan(0);
+
+    dataRows.forEach((row) => {
+      const $tds = Cypress.$(row).find("td");
+      const nameCellText = Cypress.$($tds[1])
+        .text()
+        .replaceAll(/\s+/g, " ")
+        .trim();
+      expect(nameCellText).to.eq(expected);
+    });
+  });
 });

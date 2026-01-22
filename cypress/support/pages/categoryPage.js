@@ -3,6 +3,18 @@ class CategoryPage {
     return cy.get('a[href="/ui/categories/add"]');
   }
 
+  get searchNameInput() {
+    return cy.get('input[name="name"]');
+  }
+
+  get searchBtn() {
+    return cy.contains('button[type="submit"]', "Search");
+  }
+
+  get resetBtn() {
+    return cy.get('a[href="/ui/categories"]');
+  }
+
   get nextPageBtn() {
     return cy.contains("a", "Next");
   }
