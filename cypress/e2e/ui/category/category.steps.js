@@ -784,7 +784,7 @@ When('Inspect the "Actions" column of the category table', () => {
       String(th.innerText).replaceAll(/\s+/g, " ").trim().toLowerCase(),
     );
 
-    actionsColumnIndex = headers.findIndex((h) => h === "actions");
+    actionsColumnIndex = headers.indexOf("actions");
     expect(actionsColumnIndex, "Actions column index").to.be.greaterThan(-1);
   });
 });
@@ -824,6 +824,51 @@ Then("Edit icon are either hidden or visually disabled", () => {
       expect(
         hasDisabledAttr || hasDisabledClass,
         "Edit action should be hidden or disabled for non-admin",
+      ).to.eq(true);
+    });
+  });
+});
+
+// =============================================================
+// UI/TC15 Verify Delete Action Hidden for Non admin User
+// =============================================================
+
+Then("Delete icon are either hidden or visually disabled", () => {
+  categoryPage.assertOnCategoriesPage();
+  categoryPage.categoriesTable.should("be.visible");
+
+  cy.get("table tbody tr").each(($row) => {
+    const $tds = Cypress.$($row).find("td");
+
+    // Skip empty-state row
+    if ($tds.length === 1 && Cypress.$($tds[0]).attr("colspan")) return;
+    if ($tds.length === 0) return;
+
+    const idx = Number.isInteger(actionsColumnIndex)
+      ? actionsColumnIndex
+      : $tds.length - 1;
+    const $actionsCell = Cypress.$($tds[idx]);
+
+    // The template uses a <button title="Delete"> inside a <form>.
+    const $deleteButtons = $actionsCell.find(
+      'button[title="Delete"], form[action*="/ui/categories/delete"] button',
+    );
+
+    // Hidden case: nothing to assert beyond non-existence.
+    if ($deleteButtons.length === 0) return;
+
+    cy.wrap($deleteButtons[0]).should(($el) => {
+      const $btn = Cypress.$($el);
+      const hasDisabledAttr =
+        $btn.is(":disabled") ||
+        $btn.is("[disabled]") ||
+        $btn.attr("aria-disabled") === "true";
+      const className = String($btn.attr("class") || "");
+      const hasDisabledClass = className.split(/\s+/g).includes("disabled");
+
+      expect(
+        hasDisabledAttr || hasDisabledClass,
+        "Delete action should be hidden or disabled for non-admin",
       ).to.eq(true);
     });
   });

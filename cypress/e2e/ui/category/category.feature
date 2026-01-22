@@ -1,6 +1,6 @@
 @ui @category
 Feature: Category Management Module
-    As an admin user
+    As an admin or user
     I want to manage categories
     So that I can organize plants in the system
 
@@ -120,5 +120,11 @@ Feature: Category Management Module
         Given I am logged in as User
         And I am on the "Categories" page
         When Inspect the "Actions" column of the category table
-        Then Edit icon are either hidden or visually disabled 
+        Then Edit icon are either hidden or visually disabled
 
+    @UI/TC15
+    Scenario: UI/TC15 Verify Delete Action Hidden for Non admin User
+        Given I am logged in as User
+        And I am on the "Categories" page
+        When  Inspect the "Actions" column of the category table
+        Then  Delete icon are either hidden or visually disabled
