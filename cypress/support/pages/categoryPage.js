@@ -15,6 +15,10 @@ class CategoryPage {
     return cy.get('a[href="/ui/categories"]');
   }
 
+  get parentCategoryFilterDropdown() {
+    return cy.get('select[name="parentId"]');
+  }
+
   get nextPageBtn() {
     return cy.contains("a", "Next");
   }
