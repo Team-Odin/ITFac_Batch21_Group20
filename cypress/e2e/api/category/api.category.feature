@@ -33,3 +33,10 @@ Feature: Category Management Module
         Then Status Code: 201 Created
         And Response contains "name": "API_Sub" and "parent": "Fruits"
 
+    @API/TC18
+    Scenario: API/TC18 Verify Get Category By ID
+        Given Admin has valid JWT token
+        And Category ID "1" exists
+        When Send GET request to: "/api/categories/1"
+        Then Status Code: 200 OK
+        And Response contains correct id and name for that category
