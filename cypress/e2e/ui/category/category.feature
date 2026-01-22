@@ -107,3 +107,11 @@ Feature: Category Management Module
         And Click "Search"
         Then List update display only the "Fruits" category
 
+    @UI/TC13
+    Scenario: UI/TC13 Verify Filter by Parent
+        Given I am logged in as User
+        And I am on the "Categories" page
+        When Select a parent from the "Parent Category" filter dropdown
+        And Click "Search" button
+        Then List updates to show only children of the selected parent
+

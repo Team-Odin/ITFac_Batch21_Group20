@@ -17,6 +17,7 @@ let createdSubCategoryName;
 let createdParentCategoryName;
 let page1RowsSnapshot;
 let categoryRowCount;
+let selectedParentFilterName;
 
 const findCategoryByName = (categories, categoryName) => {
   const target = String(categoryName).toLowerCase();
@@ -62,6 +63,33 @@ const ensureCategoryExists = (categoryName) => {
               );
             }
           });
+      });
+  });
+};
+
+const ensureParentWithChildForFilter = () => {
+  // Pick an existing parent that has at least one child so the filter produces results.
+  return apiLoginAsAdmin().then((authHeader) => {
+    return cy
+      .request({
+        method: "GET",
+        url: "/api/categories/main",
+        headers: { Authorization: authHeader },
+        failOnStatusCode: true,
+      })
+      .then((res) => {
+        const parents = Array.isArray(res?.body) ? res.body : [];
+        const withChildren = parents.find(
+          (p) => Array.isArray(p?.subCategories) && p.subCategories.length > 0,
+        );
+
+        if (!withChildren?.name) {
+          throw new Error(
+            "No parent category with children was found; cannot run TC13 filter test reliably.",
+          );
+        }
+
+        selectedParentFilterName = String(withChildren.name);
       });
   });
 };
@@ -156,10 +184,21 @@ After((info) => {
   const shouldCleanupTC12 =
     scenarioName.includes("UI/TC12") && Boolean(createdParentCategoryName);
 
-  if (!shouldCleanupTC03 && !shouldCleanupTC04 && !shouldCleanupTC12) return;
+  // Cleanup for TC13 (filter precondition creates a parent + child via API)
+  const shouldCleanupTC13 =
+    scenarioName.includes("UI/TC13") &&
+    (Boolean(createdSubCategoryName) || Boolean(createdParentCategoryName));
+
+  if (
+    !shouldCleanupTC03 &&
+    !shouldCleanupTC04 &&
+    !shouldCleanupTC12 &&
+    !shouldCleanupTC13
+  )
+    return;
 
   apiLoginAsAdmin().then((authHeader) => {
-    if (shouldCleanupTC04) {
+    if (shouldCleanupTC04 || shouldCleanupTC13) {
       // Delete subcategory first (child before parent)
       if (createdSubCategoryName) {
         deleteCategoryByName(createdSubCategoryName, authHeader).then(() => {
@@ -193,6 +232,8 @@ After((info) => {
         createdParentCategoryName = undefined;
       });
     }
+
+    selectedParentFilterName = undefined;
   });
 });
 
@@ -281,11 +322,24 @@ When("Enter {string} in {string}", (categoryValue, _categoryField) => {
 When("Leave {string} empty", (_parentCategory) => {});
 
 When("Click {string} button", (buttonText) => {
-  if (buttonText.toLowerCase() === "save") {
+  const t = String(buttonText).replaceAll(/\s+/g, " ").trim().toLowerCase();
+
+  if (t === "save") {
     addCategoryPage.submitBtn.should("be.visible").click();
-  } else {
-    throw new Error(`Unknown button: ${buttonText}`);
+    return;
   }
+
+  if (t === "search") {
+    categoryPage.searchBtn.should("be.visible").click();
+    return;
+  }
+
+  if (t === "reset") {
+    categoryPage.resetBtn.should("be.visible").click();
+    return;
+  }
+
+  throw new Error(`Unknown button: ${JSON.stringify(buttonText)}`);
 });
 
 Then(
@@ -670,6 +724,48 @@ Then("List update display only the {string} category", (expectedCategory) => {
         .replaceAll(/\s+/g, " ")
         .trim();
       expect(nameCellText).to.eq(expected);
+    });
+  });
+});
+
+// =============================================================
+// UI/TC13 Verify Filter by Parent
+// =============================================================
+
+When("Select a parent from the {string} filter dropdown", (_dropdownLabel) => {
+  // Create a known parent+child so the filter always returns results.
+  return ensureParentWithChildForFilter().then(() => {
+    categoryPage.visitCategoryPage();
+    categoryPage.parentCategoryFilterDropdown.should("be.visible");
+    categoryPage.parentCategoryFilterDropdown.select(selectedParentFilterName);
+  });
+});
+
+Then("List updates to show only children of the selected parent", () => {
+  expect(
+    selectedParentFilterName,
+    "selected parent filter name should be set",
+  ).to.be.a("string");
+
+  categoryPage.assertOnCategoriesPage();
+  categoryPage.categoriesTable.should("be.visible");
+
+  cy.get("table tbody tr").then(($rows) => {
+    const dataRows = Array.from($rows).filter(
+      (row) => Cypress.$(row).find("td[colspan]").length === 0,
+    );
+
+    expect(dataRows.length, "data rows after parent filter").to.be.greaterThan(
+      0,
+    );
+
+    dataRows.forEach((row) => {
+      const $tds = Cypress.$(row).find("td");
+      const parentCellText = Cypress.$($tds[2])
+        .text()
+        .replaceAll(/\s+/g, " ")
+        .trim();
+      expect(parentCellText).to.eq(String(selectedParentFilterName).trim());
     });
   });
 });
