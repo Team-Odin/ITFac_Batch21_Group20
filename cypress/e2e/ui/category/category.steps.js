@@ -5,7 +5,10 @@ import {
   Before,
   After,
 } from "@badeball/cypress-cucumber-preprocessor";
-import { loginAsAdmin } from "../../preconditions/login.preconditions";
+import {
+  loginAsAdmin,
+  loginAsUser,
+} from "../../preconditions/login.preconditions";
 import { categoryPage } from "../../../support/pages/categoryPage";
 import { addCategoryPage } from "../../../support/pages/addCategoryPage";
 
@@ -141,6 +144,10 @@ After((info) => {
 
 Given("I am logged in as Admin", () => {
   loginAsAdmin();
+});
+
+Given("I am logged in as User", () => {
+  loginAsUser();
 });
 
 Given("I am on the {string} page", (url) => {
@@ -472,7 +479,7 @@ When(
 );
 
 Then(
-  "The count matches the system default \\(e.g., exactly {string} rows\\)",
+  String.raw`The count matches the system default \(e.g., exactly {string} rows\)`,
   (expectedCount) => {
     expect(categoryRowCount, "row count should be captured").to.be.a("number");
 
@@ -480,3 +487,90 @@ Then(
     expect(categoryRowCount).to.eq(expected);
   },
 );
+
+// =============================================================
+// UI/TC10 Verify Last Page State
+// =============================================================
+
+Given("I am on the last page of {string}", (pageName) => {
+  const page = String(pageName).trim().toLowerCase();
+  const pageDisplay = JSON.stringify(pageName);
+
+  if (
+    page === "categories" ||
+    page === "category" ||
+    page.includes("categories")
+  ) {
+    categoryPage.openWithMinimumCategories("10");
+    categoryPage.goToLastPage();
+    return;
+  }
+
+  throw new Error(`Unknown page for last-page navigation: ${pageDisplay}`);
+});
+
+When("observe the {string} button", (buttonName) => {
+  const name = String(buttonName).trim().toLowerCase();
+  const buttonDisplay = JSON.stringify(buttonName);
+  categoryPage.scrollToBottom();
+
+  if (name === "next") {
+    // Observation step; assertion happens in the Then.
+    cy.log('Observing the "Next" button on last page');
+    return;
+  }
+
+  throw new Error(`Unknown button to observe: ${buttonDisplay}`);
+});
+
+Then(
+  String.raw`The {string} button is disabled \(greyed out\) or hidden`,
+  (buttonName) => {
+    const name = String(buttonName).trim().toLowerCase();
+    const buttonDisplay = JSON.stringify(buttonName);
+
+    if (name === "next") {
+      categoryPage.assertNextDisabledOrHidden();
+      return;
+    }
+
+    throw new Error(
+      `Disabled-or-hidden check not implemented for button: ${buttonDisplay}`,
+    );
+  },
+);
+
+// =============================================================
+// UI/TC11 Verify "Add Category" Button Hidden
+// =============================================================
+
+When("Scan top action area of the page", () => {
+  // Ensure we're on the Categories page and at the top where action buttons usually live.
+  categoryPage.assertOnCategoriesPage();
+  cy.scrollTo("top", { ensureScrollable: false });
+});
+
+Then("The {string} button is NOT present", (buttonText) => {
+  const normalized = String(buttonText).replaceAll(/\s+/g, " ").trim();
+
+  // TC11 specifically targets "Add Category"; we keep a generic step text for reuse.
+  if (normalized.toLowerCase() === "add category") {
+    cy.get("body").then(($body) => {
+      const selector = 'a[href="/ui/categories/add"]';
+      const matches = $body.find(selector);
+
+      if (matches.length === 0) {
+        expect(matches.length, "Add Category control present in DOM").to.eq(0);
+        return;
+      }
+
+      // If the element exists but access control hides it, assert it's not visible.
+      cy.get(selector).should("not.be.visible");
+    });
+
+    return;
+  }
+
+  // Fallback: if a different button text is used, try a simple text lookup.
+  cy.contains("a,button", normalized).should("not.exist");
+});

@@ -49,6 +49,44 @@ class CategoryPage {
     return this.getCategoryTableRows().then(($rows) => $rows.length);
   }
 
+  assertNextDisabledOrHidden() {
+    return cy.get("body").then(($body) => {
+      const $pagination = $body.find(".pagination");
+      const $next = $pagination.find('a:contains("Next")');
+
+      if ($next.length === 0) {
+        // Some UIs hide "Next" on the last page.
+        return;
+      }
+
+      expect($next.closest(".page-item")).to.have.class("disabled");
+    });
+  }
+
+  goToLastPage() {
+    const clickUntilNextDisabled = () => {
+      return cy.get("body").then(($body) => {
+        const $pagination = $body.find(".pagination");
+        const $next = $pagination.find('a:contains("Next")');
+
+        // If "Next" is hidden, we consider this already the last page.
+        if ($next.length === 0) return;
+
+        const isDisabled = $next.closest(".page-item").hasClass("disabled");
+        if (isDisabled) return;
+
+        this.scrollToBottom();
+        this.clickNextPage();
+        this.assertCategoryTableHasData();
+
+        return clickUntilNextDisabled();
+      });
+    };
+
+    this.pagination.should("be.visible");
+    return clickUntilNextDisabled();
+  }
+
   clickNextPage() {
     return this.getNextButton()
       .should("be.visible")
@@ -137,7 +175,7 @@ class CategoryPage {
   }
 
   scrollToBottom() {
-    cy.scrollTo("bottom");
+    cy.scrollTo("bottom", { ensureScrollable: false });
   }
 
   ensureMinimumCategories(minCount) {

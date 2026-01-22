@@ -41,7 +41,7 @@ const resolveJavaCmd = () => {
 module.exports = defineConfig({
   video: false,
   defaultCommandTimeout: 5000,
-  pageLoadTimeout: 60000,
+  pageLoadTimeout: 20000,
   reporter: "mocha-allure-reporter",
   reporterOptions: {
     resultsDir: "allure-results",

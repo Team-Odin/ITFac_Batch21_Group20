@@ -4,22 +4,23 @@ Feature: Category Management Module
     I want to manage categories
     So that I can organize plants in the system
 
-    Background:
-        Given I am logged in as Admin
-        And I am on the "Categories" page
-
     @UI/TC01
     Scenario: UI/TC01 Verify Add Category button visibility
+        Given I am logged in as Admin
+        And I am on the "Categories" page
         Then I should see the "Add Category" button
 
     @UI/TC02
     Scenario: UI/TC02 Verify "Add Category" Page Navigation
+        Given I am logged in as Admin
+        And I am on the "Categories" page
         When Click the "Add A Category" button
         Then System redirect to "/ui/categories/add"
 
     @UI/TC03
     Scenario: UI/TC03 Verify Creating a Main Category
-        Given I am on the "Add Category" page
+        Given I am logged in as Admin
+        And I am on the "Add Category" page
         When Enter "Fruits" in "Category Name"
         And Leave "Parent Category" empty
         And Click "Save" button
@@ -28,8 +29,9 @@ Feature: Category Management Module
 
     @UI/TC04
     Scenario: UI/TC04 Verify Creating a Sub Category
-        Given I am on the "Add Category" page
-        Given "Fruits" category exists
+        Given I am logged in as Admin
+        And I am on the "Add Category" page
+        And "Fruits" category exists
         When Enter "Apple" in "Category Name"
         And Select "Fruits" from "Parent Category"
         And Click "Save" button
@@ -38,7 +40,8 @@ Feature: Category Management Module
 
     @UI/TC05
     Scenario: UI/TC05 Verify Pagination Functionality
-        Given I am on the "Categories" page
+        Given I am logged in as Admin
+        And I am on the "Categories" page
         And with more than "10" categories exists
         When Scroll bottom of the list
         And Click "Next" pagination
@@ -46,7 +49,8 @@ Feature: Category Management Module
 
     @UI/TC06
     Scenario: UI/TC06 Verify Default Pagination State
-        Given I am on the "Categories" page
+        Given I am logged in as Admin
+        And I am on the "Categories" page
         And with more than "20" categories exists
         When Observe the pagination controls at the bottom of the table
         And Check the "Previous" button status
@@ -57,7 +61,8 @@ Feature: Category Management Module
 
     @UI/TC07
     Scenario: UI/TC07 Verify "Next" Button Navigation
-        Given I am on the "Categories" page
+        Given I am logged in as Admin
+        And I am on the "Categories" page
         And with more than "10" categories exists
         When Click "Next" pagination
         Then The table refreshes with new data
@@ -66,20 +71,31 @@ Feature: Category Management Module
 
     @UI/TC08
     Scenario: UI/TC08 Verify "Previous" Button Navigation
-        Given I am on the "Categories" page "2"
+        Given I am logged in as Admin
+        And I am on the "Categories" page "2"
         When Click "Previous" pagination
         Then The table refreshes with original data
         And The active page indicator changes to "1"
 
     @UI/TC09
     Scenario: UI/TC09 Verify Row Count Per Page
-        Given I am on the "Categories" page
+        Given I am logged in as Admin
+        And I am on the "Categories" page
         When  Count the number of category rows displayed in the table on "1"
         Then The count matches the system default (e.g., exactly "10" rows)
 
-    # @UI/TC10 
-    # Scenario: UI/TC10 Verify Last Page State
-    # Given I am on the last page of "Categories"
-    # When observe the "Next" button
-    # Then The "Next" button is disabled (greyed out) or hidden 
+    @UI/TC10 
+    Scenario: UI/TC10 Verify Last Page State
+        Given I am logged in as Admin
+        And I am on the last page of "Categories"
+        When observe the "Next" button
+        Then The "Next" button is disabled (greyed out) or hidden
+
+    @UI/TC11
+    Scenario: UI/TC11 Verify "Add Category" Button Hidden
+        Given I am logged in as User
+        And I am on the "Categories" page
+        When Scan top action area of the page
+        Then The "Add Category" button is NOT present
+
 
