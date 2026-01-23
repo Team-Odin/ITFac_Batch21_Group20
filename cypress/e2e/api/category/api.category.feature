@@ -93,3 +93,10 @@ Feature: Category Management Module
         Then Status Code: 200 OK
         And  All returned items have parent or parentId associated with ID 5
 
+    @API/TC24
+    Scenario: API/TC24 Verify Sorting by Name (ASC)
+        Given Admin or User has valid JWT token
+        When Request categories sorted by name ascending
+        Then Status Code: 200 OK
+        And Response list is sorted A-Z by name
+

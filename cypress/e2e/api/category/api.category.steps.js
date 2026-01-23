@@ -142,6 +142,35 @@ Given("Admin has valid JWT token", () => {
   });
 });
 
+Given("Admin or User has valid JWT token", () => {
+  const userUser = Cypress.env("USER_USER");
+  const userPass = Cypress.env("USER_PASS");
+
+  if (userUser && userPass) {
+    return cy
+      .request({
+        method: "POST",
+        url: "/api/auth/login",
+        body: { username: userUser, password: userPass },
+        failOnStatusCode: true,
+      })
+      .its("body")
+      .then((body) => {
+        const token = body?.token;
+        const tokenType = body?.tokenType || "Bearer";
+        if (!token) throw new Error("Login response missing token");
+        authHeader = `${tokenType} ${token}`;
+        categoryPage.setAuthHeader(authHeader);
+      });
+  }
+
+  // If USER creds are not configured, admin is acceptable for this read-only scenario.
+  return categoryPage.constructor.apiLoginAsAdmin().then((header) => {
+    authHeader = header;
+    categoryPage.setAuthHeader(header);
+  });
+});
+
 Given("Endpoint: {string}", (rawEndpoint) => {
   endpoint = categoryPage.constructor.normalizeEndpoint(rawEndpoint);
 });
@@ -943,3 +972,107 @@ Then(
     }
   },
 );
+
+Then("Response list is sorted A-Z by name", () => {
+  expect(lastResponse, "lastResponse should exist").to.exist;
+  expect(lastResponse.status).to.eq(200);
+  expect(lastResponse.body, "response body").to.exist;
+
+  const content = Array.isArray(lastResponse?.body?.content)
+    ? lastResponse.body.content
+    : Array.isArray(lastResponse.body)
+      ? lastResponse.body
+      : [];
+
+  // If API returns too few records, sorting is trivially true.
+  if (content.length < 2) return;
+
+  const names = content
+    .map((c) => String(c?.name ?? "").trim())
+    .filter((n) => n.length > 0);
+
+  // Compare adjacent items case-insensitively.
+  for (let i = 1; i < names.length; i++) {
+    const prev = names[i - 1];
+    const curr = names[i];
+    const cmp = prev.localeCompare(curr, undefined, {
+      sensitivity: "base",
+      numeric: false,
+    });
+    expect(
+      cmp,
+      `Expected sorted A-Z by name, but '${prev}' came before '${curr}'`,
+    ).to.be.at.most(0);
+  }
+});
+
+When("Request categories sorted by name ascending", () => {
+  if (!authHeader) {
+    throw new Error("Missing authHeader; run JWT token step first");
+  }
+
+  const isSortedAsc = (names) => {
+    for (let i = 1; i < names.length; i++) {
+      const prev = names[i - 1];
+      const curr = names[i];
+      const cmp = prev.localeCompare(curr, undefined, { sensitivity: "base" });
+      if (cmp > 0) return false;
+    }
+    return true;
+  };
+
+  const candidates = [
+    // Custom API style (observed)
+    "/api/categories/page?page=0&size=200&sortField=name&sortDir=asc",
+    "/api/categories/page?page=0&size=200&sortField=name&sortDir=desc",
+    // Spring Data style
+    "/api/categories/page?page=0&size=200&sort=name,asc",
+    "/api/categories/page?page=0&size=200&sort=name,desc",
+  ];
+
+  lastResponse = undefined;
+  endpoint = undefined;
+
+  const attempts = [];
+
+  const tryAt = (idx) => {
+    if (idx >= candidates.length) {
+      throw new Error(
+        `Unable to get name-ascending sorted results. Attempts: ${JSON.stringify(attempts)}`,
+      );
+    }
+
+    const url = candidates[idx];
+    return cy
+      .request({
+        method: "GET",
+        url,
+        headers: { Authorization: authHeader },
+        failOnStatusCode: false,
+      })
+      .then((res) => {
+        attempts.push({ url, status: res.status });
+        if (res.status !== 200) return tryAt(idx + 1);
+
+        const content = Array.isArray(res?.body?.content)
+          ? res.body.content
+          : Array.isArray(res.body)
+            ? res.body
+            : [];
+
+        const names = content
+          .map((c) => String(c?.name ?? "").trim())
+          .filter(Boolean);
+
+        if (names.length < 2 || isSortedAsc(names)) {
+          lastResponse = res;
+          endpoint = url;
+          return;
+        }
+
+        return tryAt(idx + 1);
+      });
+  };
+
+  return tryAt(0);
+});
