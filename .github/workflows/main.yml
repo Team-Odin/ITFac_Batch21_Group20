@@ -23,8 +23,16 @@ jobs:
           publish_branch: gh-pages
           publish_dir: allure-report
 
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run Cypress Tests
+        continue-on-error: true
+        run: npm run cy:tests
+
       - name: Generate Allure Report
         if: always()
         run: |
           npm install -g allure-commandline
           allure generate allure-results --clean -o allure-report || true
+
