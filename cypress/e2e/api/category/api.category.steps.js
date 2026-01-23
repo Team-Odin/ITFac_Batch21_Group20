@@ -17,6 +17,9 @@ let createdParentByTest;
 let expectedCategoryId;
 let expectedCategoryName;
 let createdCategoryIdsForTc21;
+let createdCategoryIdForTc22;
+let createdCategoryNameForTc22;
+let createdCategoryByTestForTc22;
 
 After((info) => {
   const scenarioName = info?.pickle?.name ?? "";
@@ -77,6 +80,29 @@ After((info) => {
       headers: { Authorization: authHeader },
       failOnStatusCode: false,
     });
+  });
+});
+
+After((info) => {
+  const scenarioName = info?.pickle?.name ?? "";
+  const shouldCleanupTc22 =
+    scenarioName.includes("API/TC22") &&
+    Boolean(createdCategoryIdForTc22) &&
+    Boolean(createdCategoryByTestForTc22) &&
+    Boolean(authHeader);
+
+  if (!shouldCleanupTc22) return;
+
+  const id = createdCategoryIdForTc22;
+  createdCategoryIdForTc22 = undefined;
+  createdCategoryNameForTc22 = undefined;
+  createdCategoryByTestForTc22 = undefined;
+
+  return cy.request({
+    method: "DELETE",
+    url: `/api/categories/${id}`,
+    headers: { Authorization: authHeader },
+    failOnStatusCode: false,
   });
 });
 
@@ -618,4 +644,140 @@ Then("Response contains exactly {int} category records", (expectedCount) => {
   }
 
   expect(content.length).to.eq(n);
+});
+
+// =============================================================
+// API/TC22 Verify Search by Name
+// =============================================================
+
+Given("Category {string} exists", (name) => {
+  if (!authHeader) {
+    throw new Error("Missing authHeader; run JWT token step first");
+  }
+
+  const categoryName = String(name).trim();
+  if (!categoryName) throw new Error("Category name is empty");
+
+  createdCategoryNameForTc22 = categoryName;
+  createdCategoryByTestForTc22 = false;
+
+  return cy
+    .request({
+      method: "GET",
+      url: "/api/categories/page?page=0&size=200&sort=id,desc",
+      headers: { Authorization: authHeader },
+      failOnStatusCode: false,
+    })
+    .then((res) => {
+      const existing = categoryPage.constructor.findCategoryByName(
+        res?.body?.content,
+        categoryName,
+      );
+
+      if (existing?.id) {
+        createdCategoryIdForTc22 = existing.id;
+        return;
+      }
+
+      return cy
+        .request({
+          method: "POST",
+          url: "/api/categories",
+          headers: { Authorization: authHeader },
+          body: { name: categoryName, parent: null },
+          failOnStatusCode: false,
+        })
+        .then((createRes) => {
+          if (![200, 201].includes(createRes.status)) {
+            throw new Error(
+              `Failed to create category '${categoryName}'. Status: ${createRes.status} Body: ${JSON.stringify(createRes.body)}`,
+            );
+          }
+          createdCategoryIdForTc22 = createRes?.body?.id;
+          createdCategoryByTestForTc22 = true;
+        });
+    });
+});
+
+When("Search categories by name {string}", (name) => {
+  if (!authHeader) {
+    throw new Error("Missing authHeader; run JWT token step first");
+  }
+
+  const term = String(name).trim();
+  if (!term) throw new Error("Search term is empty");
+
+  lastResponse = undefined;
+
+  // Backend implementations vary. Try common query parameter names.
+  const queryKeys = ["name", "keyword", "search", "q"];
+  const encoded = encodeURIComponent(term);
+
+  const attempts = [];
+  const matchesOnly = (res) => {
+    const content = Array.isArray(res?.body?.content)
+      ? res.body.content
+      : Array.isArray(res?.body)
+        ? res.body
+        : [];
+
+    if (content.length === 0) return false;
+    const nonMatches = content
+      .map((c) => String(c?.name ?? ""))
+      .filter((n) => !n.toLowerCase().includes(term.toLowerCase()));
+    return nonMatches.length === 0;
+  };
+
+  const tryKey = (idx) => {
+    if (idx >= queryKeys.length) {
+      throw new Error(
+        `No working search query param found. Attempts: ${JSON.stringify(attempts)}`,
+      );
+    }
+
+    const key = queryKeys[idx];
+    const url = `/api/categories/page?page=0&size=50&${key}=${encoded}`;
+
+    return cy
+      .request({
+        method: "GET",
+        url,
+        headers: { Authorization: authHeader },
+        failOnStatusCode: false,
+      })
+      .then((res) => {
+        attempts.push({ key, status: res.status });
+
+        if (res.status === 200 && matchesOnly(res)) {
+          lastResponse = res;
+          return;
+        }
+
+        return tryKey(idx + 1);
+      });
+  };
+
+  return tryKey(0);
+});
+
+Then("Response list contains only categories matching {string}", (expected) => {
+  expect(lastResponse, "lastResponse should exist").to.exist;
+  expect(lastResponse.body, "response body").to.exist;
+
+  const term = String(expected).toLowerCase();
+  const content = Array.isArray(lastResponse?.body?.content)
+    ? lastResponse.body.content
+    : Array.isArray(lastResponse.body)
+      ? lastResponse.body
+      : [];
+
+  expect(content.length, "search result count").to.be.greaterThan(0);
+
+  const names = content.map((c) => String(c?.name ?? ""));
+  const nonMatches = names.filter((n) => !n.toLowerCase().includes(term));
+
+  expect(
+    nonMatches,
+    `Expected all returned category names to include '${expected}', but these did not: ${JSON.stringify(nonMatches)}`,
+  ).to.have.length(0);
 });

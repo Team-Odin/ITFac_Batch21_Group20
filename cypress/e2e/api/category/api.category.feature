@@ -77,3 +77,11 @@ Feature: Category Management Module
         Then Status Code: 200 OK
         And  Response contains exactly 5 category records
 
+    @API/TC22
+    Scenario: API/TC22 Verify Search by Name
+        Given Admin has valid JWT token
+        And Category "Anthurium" exists
+        When Search categories by name "Anthurium"
+        Then Status Code: 200 OK
+        And Response list contains only categories matching "Anthurium"
+
