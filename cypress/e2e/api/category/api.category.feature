@@ -107,3 +107,11 @@ Feature: Category Management Module
         Then Status Code: 200 OK
         And Response list is sorted Z-A by name
 
+    @API/TC26
+    Scenario: API/TC26 Verify Combined Search & Sort
+        Given Admin or User has valid JWT token
+        When Search categories by name "a" sorted by name ascending
+        Then Status Code: 200 OK
+        And Response list contains only categories matching "a"
+        And Response list is sorted A-Z by name
+

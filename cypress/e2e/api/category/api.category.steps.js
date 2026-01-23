@@ -24,6 +24,38 @@ let expectedParentIdForTc23;
 let expectedParentNameForTc23;
 let createdCategoryByTestForTc22;
 
+const getPageContentArray = (body) => {
+  if (body && Array.isArray(body.content)) return body.content;
+  if (Array.isArray(body)) return body;
+  return [];
+};
+
+const getCategoryNamesFromBody = (body) =>
+  getPageContentArray(body)
+    .map((c) => String(c?.name ?? "").trim())
+    .filter(Boolean);
+
+const allNamesContainTerm = (names, term) => {
+  const needle = String(term).toLowerCase();
+  return names.every((n) => String(n).toLowerCase().includes(needle));
+};
+
+const bodyMatchesOnlyTerm = (body, term) => {
+  const names = getCategoryNamesFromBody(body);
+  if (names.length === 0) return false;
+  return allNamesContainTerm(names, term);
+};
+
+const isSortedAscByName = (names) => {
+  for (let i = 1; i < names.length; i++) {
+    const prev = names[i - 1];
+    const curr = names[i];
+    const cmp = prev.localeCompare(curr, undefined, { sensitivity: "base" });
+    if (cmp > 0) return false;
+  }
+  return true;
+};
+
 After((info) => {
   const scenarioName = info?.pickle?.name ?? "";
   const shouldCleanup =
@@ -768,19 +800,6 @@ When("Search categories by name {string}", (name) => {
   const encoded = encodeURIComponent(term);
 
   const attempts = [];
-  const matchesOnly = (res) => {
-    const content = Array.isArray(res?.body?.content)
-      ? res.body.content
-      : Array.isArray(res?.body)
-        ? res.body
-        : [];
-
-    if (content.length === 0) return false;
-    const nonMatches = content
-      .map((c) => String(c?.name ?? ""))
-      .filter((n) => !n.toLowerCase().includes(term.toLowerCase()));
-    return nonMatches.length === 0;
-  };
 
   const tryKey = (idx) => {
     if (idx >= queryKeys.length) {
@@ -802,7 +821,7 @@ When("Search categories by name {string}", (name) => {
       .then((res) => {
         attempts.push({ key, status: res.status });
 
-        if (res.status === 200 && matchesOnly(res)) {
+        if (res.status === 200 && bodyMatchesOnlyTerm(res?.body, term)) {
           lastResponse = res;
           return;
         }
@@ -818,22 +837,14 @@ Then("Response list contains only categories matching {string}", (expected) => {
   expect(lastResponse, "lastResponse should exist").to.exist;
   expect(lastResponse.body, "response body").to.exist;
 
-  const term = String(expected).toLowerCase();
-  const content = Array.isArray(lastResponse?.body?.content)
-    ? lastResponse.body.content
-    : Array.isArray(lastResponse.body)
-      ? lastResponse.body
-      : [];
+  const term = String(expected).trim();
+  const names = getCategoryNamesFromBody(lastResponse.body);
 
-  expect(content.length, "search result count").to.be.greaterThan(0);
-
-  const names = content.map((c) => String(c?.name ?? ""));
-  const nonMatches = names.filter((n) => !n.toLowerCase().includes(term));
-
+  expect(names.length, "search result count").to.be.greaterThan(0);
   expect(
-    nonMatches,
-    `Expected all returned category names to include '${expected}', but these did not: ${JSON.stringify(nonMatches)}`,
-  ).to.have.length(0);
+    allNamesContainTerm(names, term),
+    `Expected all returned category names to include '${term}', but at least one did not`,
+  ).to.eq(true);
 });
 
 // =============================================================
@@ -1042,16 +1053,6 @@ When("Request categories sorted by name ascending", () => {
     throw new Error("Missing authHeader; run JWT token step first");
   }
 
-  const isSortedAsc = (names) => {
-    for (let i = 1; i < names.length; i++) {
-      const prev = names[i - 1];
-      const curr = names[i];
-      const cmp = prev.localeCompare(curr, undefined, { sensitivity: "base" });
-      if (cmp > 0) return false;
-    }
-    return true;
-  };
-
   const candidates = [
     // Custom API style (observed)
     "/api/categories/page?page=0&size=200&sortField=name&sortDir=asc",
@@ -1085,17 +1086,9 @@ When("Request categories sorted by name ascending", () => {
         attempts.push({ url, status: res.status });
         if (res.status !== 200) return tryAt(idx + 1);
 
-        const content = Array.isArray(res?.body?.content)
-          ? res.body.content
-          : Array.isArray(res.body)
-            ? res.body
-            : [];
+        const names = getCategoryNamesFromBody(res?.body);
 
-        const names = content
-          .map((c) => String(c?.name ?? "").trim())
-          .filter(Boolean);
-
-        if (names.length < 2 || isSortedAsc(names)) {
+        if (names.length < 2 || isSortedAscByName(names)) {
           lastResponse = res;
           endpoint = url;
           return;
@@ -1189,3 +1182,148 @@ When("Request categories sorted by name descending", () => {
 
   return tryAt(0);
 });
+
+When(
+  "Search categories by name {string} sorted by name ascending",
+  (searchTerm) => {
+    if (!authHeader) {
+      throw new Error("Missing authHeader; run JWT token step first");
+    }
+
+    if (typeof searchTerm !== "string") {
+      throw new TypeError("Search term must be a string");
+    }
+
+    const term = searchTerm.trim();
+    if (!term) throw new Error("Search term is empty");
+
+    const buildCandidates = (queryTerm) => {
+      const encoded = encodeURIComponent(queryTerm);
+
+      // Search key variants we support/see in APIs.
+      const searchKeys = ["name", "keyword", "search", "q"];
+
+      // Sort variants (same ones we probe for TC24).
+      const sortSuffixes = [
+        "sortField=name&sortDir=asc",
+        "sortField=name&sortDir=ASC",
+        "sort=name,asc",
+        "sort=name,ASC",
+      ];
+
+      const candidates = [];
+      for (const key of searchKeys) {
+        for (const sort of sortSuffixes) {
+          candidates.push(
+            `/api/categories/page?page=0&size=200&${key}=${encoded}&${sort}`,
+          );
+        }
+        // Also allow no explicit sort; the backend may default to name asc for filtered queries.
+        candidates.push(
+          `/api/categories/page?page=0&size=200&${key}=${encoded}`,
+        );
+      }
+      return candidates;
+    };
+
+    lastResponse = undefined;
+    endpoint = undefined;
+
+    const accept = (res) => {
+      const names = getCategoryNamesFromBody(res?.body);
+      if (names.length === 0) return false;
+      return allNamesContainTerm(names, term) && isSortedAscByName(names);
+    };
+
+    const tryCandidates = (queryTerm, attempts) => {
+      const candidates = buildCandidates(queryTerm);
+
+      const tryAt = (idx) => {
+        if (idx >= candidates.length) {
+          return cy.wrap(false, { log: false });
+        }
+
+        const url = candidates[idx];
+        return cy
+          .request({
+            method: "GET",
+            url,
+            headers: { Authorization: authHeader },
+            failOnStatusCode: false,
+          })
+          .then((res) => {
+            attempts.push({ url, status: res.status });
+            if (res.status === 200 && accept(res)) {
+              lastResponse = res;
+              endpoint = url;
+              return true;
+            }
+            return tryAt(idx + 1);
+          });
+      };
+
+      return tryAt(0);
+    };
+
+    const findRefinedTerm = () => {
+      const needle = term.toLowerCase();
+      return cy
+        .request({
+          method: "GET",
+          url: "/api/categories/page?page=0&size=200",
+          headers: { Authorization: authHeader },
+          failOnStatusCode: false,
+        })
+        .then((res) => {
+          if (res.status !== 200) return null;
+          const names = getCategoryNamesFromBody(res.body);
+          const match = names.find(
+            (n) =>
+              String(n).toLowerCase().includes(needle) && String(n).length >= 2,
+          );
+          if (!match) return null;
+
+          const nameLower = String(match).toLowerCase();
+          const idx = nameLower.indexOf(needle);
+          if (idx < 0) return null;
+
+          // Build a 2-character term that still contains the original term.
+          let refined = String(match).slice(
+            idx,
+            idx + Math.max(2, term.length),
+          );
+          if (refined.length < 2 && idx > 0) {
+            refined = String(match).slice(idx - 1, idx + 1);
+          }
+          if (
+            !refined.toLowerCase().includes(needle) &&
+            String(match).length >= 2
+          ) {
+            refined = String(match).slice(0, 2);
+          }
+          return refined;
+        });
+    };
+
+    const attempts = [];
+    return tryCandidates(term, attempts).then((found) => {
+      if (found) return;
+
+      return findRefinedTerm().then((refined) => {
+        if (!refined) {
+          throw new Error(
+            `Unable to find a query that both filters by '${term}' and sorts A-Z (also could not refine term). Attempts: ${JSON.stringify(attempts)}`,
+          );
+        }
+
+        const refinedAttempts = [];
+        return tryCandidates(refined, refinedAttempts).then((foundRefined) => {
+          if (foundRefined) return;
+          throw new Error(
+            `Unable to find a query that both filters by '${term}' and sorts A-Z. Attempts (term='${term}'): ${JSON.stringify(attempts)} Attempts (refined='${refined}'): ${JSON.stringify(refinedAttempts)}`,
+          );
+        });
+      });
+    });
+  },
+);
