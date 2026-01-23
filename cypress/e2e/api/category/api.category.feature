@@ -115,3 +115,9 @@ Feature: Category Management Module
         And Response list contains only categories matching "a"
         And Response list is sorted A-Z by name
 
+    @API/TC27
+    Scenario: API/TC27 Verify Invalid Page Index
+        Given Admin or User has valid JWT token
+        When Send GET request: "/api/categories/page?page=-1&size=5"
+        Then Status Code: 400 Bad Request
+        And  Error message regarding invalid page index

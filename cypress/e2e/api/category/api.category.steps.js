@@ -623,6 +623,21 @@ Then("Error message: {string}", (expectedMessage) => {
   ).to.include(expected);
 });
 
+Then("Error message regarding invalid page index", () => {
+  expect(lastResponse, "lastResponse should exist").to.exist;
+  expect(lastResponse.body, "response body").to.exist;
+
+  const messages = collectErrorMessages(lastResponse.body);
+  const haystack = messages.join("\n");
+  const lower = haystack.toLowerCase();
+
+  // Backend message currently: "Page index must not be less than zero"
+  expect(lower, `Actual error payload: ${haystack}`).to.include("page index");
+  expect(lower, `Actual error payload: ${haystack}`).to.match(
+    /(less than zero|must not be less than zero|negative)/,
+  );
+});
+
 // =============================================================
 // API/TC20 Verify Create Validation: Name Too Long
 // =============================================================
