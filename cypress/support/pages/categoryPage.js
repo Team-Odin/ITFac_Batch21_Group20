@@ -260,6 +260,160 @@ class CategoryPage {
       .should("be.visible")
       .should("contain.text", expectedPageNumber);
   }
+
+  // ========================================
+  // API Helper Methods
+  // ========================================
+
+  static apiLoginAsAdmin() {
+    const username = Cypress.env("ADMIN_USER");
+    const password = Cypress.env("ADMIN_PASS");
+
+    if (!username || !password) {
+      throw new Error(
+        "Missing admin credentials. Set ADMIN_USER and ADMIN_PASS in your .env (or as CYPRESS_ADMIN_USER/CYPRESS_ADMIN_PASS).",
+      );
+    }
+
+    return cy
+      .request({
+        method: "POST",
+        url: "/api/auth/login",
+        body: { username, password },
+        failOnStatusCode: true,
+      })
+      .its("body")
+      .then((body) => {
+        const token = body?.token;
+        const tokenType = body?.tokenType || "Bearer";
+        if (!token) throw new Error("Login response missing token");
+        return `${tokenType} ${token}`;
+      });
+  }
+
+  static normalizeEndpoint(raw) {
+    const cleaned = String(raw).replaceAll(/\s+/g, "").trim();
+    if (!cleaned) throw new Error("Endpoint is empty");
+    if (cleaned.startsWith("/")) return cleaned;
+    if (cleaned.startsWith("api/")) return `/${cleaned}`;
+    if (cleaned.startsWith("api")) return `/${cleaned}`;
+    return `/${cleaned}`;
+  }
+
+  static findCategoryByName(categories, name) {
+    const target = String(name).toLowerCase();
+    if (!Array.isArray(categories)) return undefined;
+    return categories.find((c) => String(c?.name).toLowerCase() === target);
+  }
+
+  constructor(authHeader = null) {
+    this.authHeader = authHeader;
+  }
+
+  deleteCategoryIfExists(nameToDelete) {
+    if (!this.authHeader) {
+      throw new Error("authHeader is not set. Call setAuthHeader first.");
+    }
+
+    const name = String(nameToDelete);
+    if (!name) return cy.wrap(null);
+
+    return cy
+      .request({
+        method: "GET",
+        url: "/api/categories/page?page=0&size=200&sort=id,desc",
+        headers: { Authorization: this.authHeader },
+        failOnStatusCode: false,
+      })
+      .then((res) => {
+        const match = CategoryPage.findCategoryByName(res?.body?.content, name);
+        if (!match?.id) return;
+
+        return cy.request({
+          method: "DELETE",
+          url: `/api/categories/${match.id}`,
+          headers: { Authorization: this.authHeader },
+          failOnStatusCode: false,
+        });
+      });
+  }
+
+  getMainCategoryByName(name) {
+    if (!this.authHeader) {
+      throw new Error("authHeader is not set. Call setAuthHeader first.");
+    }
+
+    const target = String(name);
+    return cy
+      .request({
+        method: "GET",
+        url: "/api/categories/page?page=0&size=200&sort=id,desc",
+        headers: { Authorization: this.authHeader },
+        failOnStatusCode: false,
+      })
+      .then((res) => {
+        const match = Array.isArray(res?.body?.content)
+          ? res.body.content.find(
+              (c) =>
+                String(c?.name).toLowerCase() === target.toLowerCase() &&
+                (c?.parentName === "-" || c?.parentName == null),
+            )
+          : undefined;
+        return match;
+      });
+  }
+
+  ensureMainCategoryExists(name) {
+    if (!this.authHeader) {
+      throw new Error("authHeader is not set. Call setAuthHeader first.");
+    }
+
+    const parentName = String(name);
+    return this.getMainCategoryByName(parentName).then((match) => {
+      if (match?.id) {
+        return { id: match.id, created: false };
+      }
+
+      return cy
+        .request({
+          method: "POST",
+          url: "/api/categories",
+          headers: { Authorization: this.authHeader },
+          body: { name: parentName, parent: null },
+          failOnStatusCode: false,
+        })
+        .then((res) => {
+          if (![200, 201].includes(res.status)) {
+            throw new Error(
+              `Failed to create parent category '${parentName}'. Status: ${res.status}`,
+            );
+          }
+          return { id: res?.body?.id, created: true };
+        });
+    });
+  }
+
+  getCategoryById(id) {
+    if (!this.authHeader) {
+      throw new Error("authHeader is not set. Call setAuthHeader first.");
+    }
+
+    const categoryId = Number(id);
+    if (!Number.isFinite(categoryId)) return cy.wrap(undefined);
+
+    return cy
+      .request({
+        method: "GET",
+        url: `/api/categories/${categoryId}`,
+        headers: { Authorization: this.authHeader },
+        failOnStatusCode: false,
+      })
+      .then((res) => (res.status === 200 ? res.body : undefined));
+  }
+
+  setAuthHeader(token) {
+    this.authHeader = token;
+  }
 }
 
 export const categoryPage = new CategoryPage();
