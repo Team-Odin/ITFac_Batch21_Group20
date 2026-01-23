@@ -783,6 +783,29 @@ When("Send GET request: {string}", (rawEndpoint) => {
     });
 });
 
+// Some scenarios have this step without a space after ':' (typo-tolerant support)
+When("Send GET request:{string}", (rawEndpoint) => {
+  endpoint = categoryPage.constructor.normalizeEndpoint(rawEndpoint);
+
+  const headers = authHeader ? { Authorization: authHeader } : undefined;
+
+  return cy
+    .request({
+      method: "GET",
+      url: endpoint,
+      headers,
+      failOnStatusCode: false,
+    })
+    .then((res) => {
+      lastResponse = res;
+    });
+});
+
+Then("Status Code: 400 Bad Request or 200 OK", () => {
+  expect(lastResponse, "lastResponse should exist").to.exist;
+  expect([200, 400], "allowed statuses").to.include(lastResponse.status);
+});
+
 Then("Response contains exactly {int} category records", (expectedCount) => {
   expect(lastResponse, "lastResponse should exist").to.exist;
   expect(lastResponse.body, "response body").to.exist;

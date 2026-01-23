@@ -135,3 +135,10 @@ Feature: Category Management Module
         When Send GET request: "/api/categories/page?name=NonExistent123"
         Then Status Code: 200 OK
         And Response body is an empty list (or valid empty page object)
+
+    @API/TC30
+    Scenario: API/TC30 Verify Invalid Sort Field
+        Given Admin or User has valid JWT token
+        When Send GET request:"/api/categories/page?sortField=xyz"
+        Then Status Code: 400 Bad Request or 200 OK
+
