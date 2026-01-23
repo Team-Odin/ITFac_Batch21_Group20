@@ -203,6 +203,11 @@ Given("Admin or User has valid JWT token", () => {
   });
 });
 
+Given("No Authorization Header provided", () => {
+  authHeader = undefined;
+  if (categoryPage) categoryPage.setAuthHeader(null);
+});
+
 Given("Endpoint: {string}", (rawEndpoint) => {
   endpoint = categoryPage.constructor.normalizeEndpoint(rawEndpoint);
 });
@@ -547,6 +552,11 @@ Then("Status Code: {int} Bad Request", (expectedStatus) => {
   expect(lastResponse.status).to.eq(Number(expectedStatus));
 });
 
+Then("Status Code: {int} Unauthorized", (expectedStatus) => {
+  expect(lastResponse, "lastResponse should exist").to.exist;
+  expect(lastResponse.status).to.eq(Number(expectedStatus));
+});
+
 function collectErrorMessages(body) {
   if (body == null) return [];
   if (typeof body === "string") return [body];
@@ -638,6 +648,55 @@ Then("Error message regarding invalid page index", () => {
   );
 });
 
+Then("Response message indicates authentication failure", () => {
+  expect(lastResponse, "lastResponse should exist").to.exist;
+  expect(lastResponse.body, "response body").to.exist;
+
+  const messages = collectErrorMessages(lastResponse.body);
+  const haystack = messages.join("\n");
+  const lower = haystack.toLowerCase();
+
+  // Typical Spring Security response includes: "Full authentication is required to access this resource"
+  // or an error label like "Unauthorized".
+  expect(lower, `Actual error payload: ${haystack}`).to.match(
+    /(unauthorized|authentication|authenticated|access is denied|forbidden)/,
+  );
+});
+
+Then("Response body is an empty list \\(or valid empty page object\\)", () => {
+  expect(lastResponse, "lastResponse should exist").to.exist;
+  expect(lastResponse.body, "response body").to.exist;
+
+  const body = lastResponse.body;
+
+  // Some endpoints may return a raw list.
+  if (Array.isArray(body)) {
+    expect(body, "expected empty list").to.have.length(0);
+    return;
+  }
+
+  // Spring Data Page response.
+  if (body && typeof body === "object" && Array.isArray(body.content)) {
+    expect(body.content, "expected empty page content").to.have.length(0);
+
+    if (Object.hasOwn(body, "totalElements")) {
+      expect(Number(body.totalElements)).to.eq(0);
+    }
+    if (Object.hasOwn(body, "numberOfElements")) {
+      expect(Number(body.numberOfElements)).to.eq(0);
+    }
+    if (Object.hasOwn(body, "empty")) {
+      expect(Boolean(body.empty)).to.eq(true);
+    }
+
+    return;
+  }
+
+  throw new Error(
+    `Expected response body to be an empty array or a page object with empty content. Got: ${JSON.stringify(body)}`,
+  );
+});
+
 // =============================================================
 // API/TC20 Verify Create Validation: Name Too Long
 // =============================================================
@@ -708,17 +767,15 @@ Given(/"(\d+)"\+\s*Categories exist/, (count) => {
 });
 
 When("Send GET request: {string}", (rawEndpoint) => {
-  if (!authHeader) {
-    throw new Error("Missing authHeader; run JWT token step first");
-  }
-
   endpoint = categoryPage.constructor.normalizeEndpoint(rawEndpoint);
+
+  const headers = authHeader ? { Authorization: authHeader } : undefined;
 
   return cy
     .request({
       method: "GET",
       url: endpoint,
-      headers: { Authorization: authHeader },
+      headers,
       failOnStatusCode: false,
     })
     .then((res) => {
