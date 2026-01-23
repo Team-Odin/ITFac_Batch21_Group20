@@ -100,3 +100,10 @@ Feature: Category Management Module
         Then Status Code: 200 OK
         And Response list is sorted A-Z by name
 
+    @API/TC25
+    Scenario: API/TC25 Verify Sorting by Name (DESC)
+        Given Admin or User has valid JWT token
+        When Request categories sorted by name descending
+        Then Status Code: 200 OK
+        And Response list is sorted Z-A by name
+

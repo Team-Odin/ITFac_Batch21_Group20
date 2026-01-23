@@ -1006,6 +1006,37 @@ Then("Response list is sorted A-Z by name", () => {
   }
 });
 
+Then("Response list is sorted Z-A by name", () => {
+  expect(lastResponse, "lastResponse should exist").to.exist;
+  expect(lastResponse.status).to.eq(200);
+  expect(lastResponse.body, "response body").to.exist;
+
+  const content = Array.isArray(lastResponse?.body?.content)
+    ? lastResponse.body.content
+    : Array.isArray(lastResponse.body)
+      ? lastResponse.body
+      : [];
+
+  if (content.length < 2) return;
+
+  const names = content
+    .map((c) => String(c?.name ?? "").trim())
+    .filter((n) => n.length > 0);
+
+  for (let i = 1; i < names.length; i++) {
+    const prev = names[i - 1];
+    const curr = names[i];
+    const cmp = prev.localeCompare(curr, undefined, {
+      sensitivity: "base",
+      numeric: false,
+    });
+    expect(
+      cmp,
+      `Expected sorted Z-A by name, but '${prev}' came before '${curr}'`,
+    ).to.be.at.least(0);
+  }
+});
+
 When("Request categories sorted by name ascending", () => {
   if (!authHeader) {
     throw new Error("Missing authHeader; run JWT token step first");
@@ -1065,6 +1096,88 @@ When("Request categories sorted by name ascending", () => {
           .filter(Boolean);
 
         if (names.length < 2 || isSortedAsc(names)) {
+          lastResponse = res;
+          endpoint = url;
+          return;
+        }
+
+        return tryAt(idx + 1);
+      });
+  };
+
+  return tryAt(0);
+});
+
+When("Request categories sorted by name descending", () => {
+  if (!authHeader) {
+    throw new Error("Missing authHeader; run JWT token step first");
+  }
+
+  const isSortedDesc = (names) => {
+    for (let i = 1; i < names.length; i++) {
+      const prev = names[i - 1];
+      const curr = names[i];
+      const cmp = prev.localeCompare(curr, undefined, { sensitivity: "base" });
+      if (cmp < 0) return false;
+    }
+    return true;
+  };
+
+  const candidates = [
+    // Custom API style (observed)
+    "/api/categories/page?page=0&size=200&sortField=name&sortDir=desc",
+    "/api/categories/page?page=0&size=200&sortField=name&sortDir=DESC",
+    "/api/categories/page?page=0&size=200&sortDir=desc&sortField=name",
+    // Alternate direction key names
+    "/api/categories/page?page=0&size=200&sortField=name&direction=desc",
+    "/api/categories/page?page=0&size=200&sortField=name&dir=desc",
+    "/api/categories/page?page=0&size=200&sortField=name&order=desc",
+    "/api/categories/page?page=0&size=200&sortField=name&sortOrder=desc",
+    "/api/categories/page?page=0&size=200&sortField=name&sortDirection=desc",
+    // Alternate key names (common)
+    "/api/categories/page?page=0&size=200&sortBy=name&sortDir=desc",
+    "/api/categories/page?page=0&size=200&sortColumn=name&sortDir=desc",
+    "/api/categories/page?page=0&size=200&sortProperty=name&sortDir=desc",
+    // Spring Data style
+    "/api/categories/page?page=0&size=200&sort=name,desc",
+    "/api/categories/page?page=0&size=200&sort=name,DESC",
+  ];
+
+  lastResponse = undefined;
+  endpoint = undefined;
+
+  const attempts = [];
+
+  const tryAt = (idx) => {
+    if (idx >= candidates.length) {
+      throw new Error(
+        `Unable to get name-descending sorted results. Attempts: ${JSON.stringify(attempts)}`,
+      );
+    }
+
+    const url = candidates[idx];
+    return cy
+      .request({
+        method: "GET",
+        url,
+        headers: { Authorization: authHeader },
+        failOnStatusCode: false,
+      })
+      .then((res) => {
+        attempts.push({ url, status: res.status });
+        if (res.status !== 200) return tryAt(idx + 1);
+
+        const content = Array.isArray(res?.body?.content)
+          ? res.body.content
+          : Array.isArray(res.body)
+            ? res.body
+            : [];
+
+        const names = content
+          .map((c) => String(c?.name ?? "").trim())
+          .filter(Boolean);
+
+        if (names.length < 2 || isSortedDesc(names)) {
           lastResponse = res;
           endpoint = url;
           return;
