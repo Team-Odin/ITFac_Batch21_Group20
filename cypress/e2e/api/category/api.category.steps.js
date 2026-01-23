@@ -19,6 +19,9 @@ let expectedCategoryName;
 let createdCategoryIdsForTc21;
 let createdCategoryIdForTc22;
 let createdCategoryNameForTc22;
+let createdChildCategoryIdForTc23;
+let expectedParentIdForTc23;
+let expectedParentNameForTc23;
 let createdCategoryByTestForTc22;
 
 After((info) => {
@@ -62,7 +65,7 @@ After((info) => {
   const scenarioName = info?.pickle?.name ?? "";
   const shouldCleanupTc21 =
     scenarioName.includes("API/TC21") &&
-    Array.isArray(createdCategoryIdsForTc21) &&
+    Boolean(createdCategoryIdForTc22) &&
     createdCategoryIdsForTc21.length > 0;
 
   if (!shouldCleanupTc21) return;
@@ -97,6 +100,28 @@ After((info) => {
   createdCategoryIdForTc22 = undefined;
   createdCategoryNameForTc22 = undefined;
   createdCategoryByTestForTc22 = undefined;
+
+  return cy.request({
+    method: "DELETE",
+    url: `/api/categories/${id}`,
+    headers: { Authorization: authHeader },
+    failOnStatusCode: false,
+  });
+});
+
+After((info) => {
+  const scenarioName = info?.pickle?.name ?? "";
+  const shouldCleanupTc23 =
+    scenarioName.includes("API/TC23") &&
+    Boolean(createdChildCategoryIdForTc23) &&
+    Boolean(authHeader);
+
+  if (!shouldCleanupTc23) return;
+
+  const id = createdChildCategoryIdForTc23;
+  createdChildCategoryIdForTc23 = undefined;
+  expectedParentIdForTc23 = undefined;
+  expectedParentNameForTc23 = undefined;
 
   return cy.request({
     method: "DELETE",
@@ -781,3 +806,140 @@ Then("Response list contains only categories matching {string}", (expected) => {
     `Expected all returned category names to include '${expected}', but these did not: ${JSON.stringify(nonMatches)}`,
   ).to.have.length(0);
 });
+
+// =============================================================
+// API/TC23 Verify Filter by Parent ID
+// =============================================================
+
+Given("Parent ID {string} exists with children", (id) => {
+  if (!authHeader) {
+    throw new Error("Missing authHeader; run JWT token step first");
+  }
+
+  const parentId = Number(id);
+  if (!Number.isFinite(parentId)) {
+    throw new TypeError(`Invalid parent id '${String(id)}'`);
+  }
+
+  expectedParentIdForTc23 = parentId;
+  expectedParentNameForTc23 = undefined;
+
+  // Confirm parent exists and capture its name (for assertions when API returns only parentName).
+  return cy
+    .request({
+      method: "GET",
+      url: `/api/categories/${parentId}`,
+      headers: { Authorization: authHeader },
+      failOnStatusCode: false,
+    })
+    .then((res) => {
+      if (res.status !== 200) {
+        throw new Error(
+          `Parent category id '${parentId}' does not exist or is not accessible. Status: ${res.status}`,
+        );
+      }
+
+      const name = res?.body?.name != null ? String(res.body.name) : "";
+      if (!name) {
+        throw new Error(
+          `Parent category id '${parentId}' exists but response did not include a name`,
+        );
+      }
+      expectedParentNameForTc23 = name;
+    })
+    .then(() => {
+      // Ensure at least one child exists for this parent; if none, create a temporary child.
+      return cy
+        .request({
+          method: "GET",
+          url: `/api/categories/page?page=0&size=50&parentId=${parentId}`,
+          headers: { Authorization: authHeader },
+          failOnStatusCode: false,
+        })
+        .then((res) => {
+          if (res.status !== 200) {
+            throw new Error(
+              `Failed to fetch children for parentId=${parentId}. Status: ${res.status} Body: ${JSON.stringify(res.body)}`,
+            );
+          }
+
+          const content = Array.isArray(res?.body?.content)
+            ? res.body.content
+            : Array.isArray(res.body)
+              ? res.body
+              : [];
+
+          if (content.length > 0) return;
+
+          const runId = String(Date.now() % 10000).padStart(4, "0");
+          const childName = `T23${runId}`; // 3..10 chars
+
+          return cy
+            .request({
+              method: "POST",
+              url: "/api/categories",
+              headers: { Authorization: authHeader },
+              body: { name: childName, parent: { id: parentId } },
+              failOnStatusCode: false,
+            })
+            .then((createRes) => {
+              if (![200, 201].includes(createRes.status)) {
+                throw new Error(
+                  `Failed to create child category under parentId=${parentId}. Status: ${createRes.status} Body: ${JSON.stringify(createRes.body)}`,
+                );
+              }
+              createdChildCategoryIdForTc23 = createRes?.body?.id;
+            });
+        });
+    });
+});
+
+Then(
+  "All returned items have parent or parentId associated with ID {int}",
+  (expectedParentId) => {
+    expect(lastResponse, "lastResponse should exist").to.exist;
+    expect(lastResponse.status).to.eq(200);
+
+    const id = Number(expectedParentId);
+    const expectedName = expectedParentNameForTc23;
+
+    const content = Array.isArray(lastResponse?.body?.content)
+      ? lastResponse.body.content
+      : Array.isArray(lastResponse.body)
+        ? lastResponse.body
+        : [];
+
+    expect(content.length, "filtered result count").to.be.greaterThan(0);
+
+    for (const row of content) {
+      const rowParentId =
+        row && Object.hasOwn(row, "parentId") && row.parentId != null
+          ? Number(row.parentId)
+          : undefined;
+      const rowParentObjId =
+        row?.parent && typeof row.parent === "object" && row.parent.id != null
+          ? Number(row.parent.id)
+          : undefined;
+
+      if (Number.isFinite(rowParentId)) {
+        expect(rowParentId).to.eq(id);
+        continue;
+      }
+      if (Number.isFinite(rowParentObjId)) {
+        expect(rowParentObjId).to.eq(id);
+        continue;
+      }
+
+      const rowParentName =
+        row && Object.hasOwn(row, "parentName") ? String(row.parentName) : "";
+      if (expectedName) {
+        expect(rowParentName).to.eq(expectedName);
+        continue;
+      }
+
+      throw new Error(
+        `Unable to assert parent association for row: ${JSON.stringify(row)}`,
+      );
+    }
+  },
+);

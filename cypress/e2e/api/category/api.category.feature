@@ -85,3 +85,11 @@ Feature: Category Management Module
         Then Status Code: 200 OK
         And Response list contains only categories matching "Anthurium"
 
+    @API/TC23
+    Scenario: API/TC23 Verify Filter by Parent ID
+        Given Admin has valid JWT token
+        And  Parent ID "5" exists with children
+        When Send GET request: "/api/categories/page?page=0&size=50&parentId=5"
+        Then Status Code: 200 OK
+        And  All returned items have parent or parentId associated with ID 5
+
