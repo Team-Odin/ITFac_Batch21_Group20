@@ -115,3 +115,30 @@ Feature: Category Management Module
         And Response list contains only categories matching "a"
         And Response list is sorted A-Z by name
 
+    @API/TC27
+    Scenario: API/TC27 Verify Invalid Page Index
+        Given Admin or User has valid JWT token
+        When Send GET request: "/api/categories/page?page=-1&size=5"
+        Then Status Code: 400 Bad Request
+        And  Error message regarding invalid page index
+
+    @API/TC28
+    Scenario: API/TC28 Verify Unauthorized Access
+        Given No Authorization Header provided
+        When Send GET request: "/api/categories/page?page=0&size=10"
+        Then Status Code: 401 Unauthorized
+        And Response message indicates authentication failure
+
+    @API/TC29
+    Scenario: API/TC29 Verify Empty Search Result
+        Given Admin or User has valid JWT token
+        When Send GET request: "/api/categories/page?name=NonExistent123"
+        Then Status Code: 200 OK
+        And Response body is an empty list (or valid empty page object)
+
+    @API/TC30
+    Scenario: API/TC30 Verify Invalid Sort Field
+        Given Admin or User has valid JWT token
+        When Send GET request:"/api/categories/page?sortField=xyz"
+        Then Status Code: 400 Bad Request or 200 OK
+
