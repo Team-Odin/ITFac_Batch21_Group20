@@ -43,3 +43,11 @@ jobs:
           name: cypress-screenshots
           path: cypress/screenshots/
           retention-days: 30
+
+      - name: Upload Allure Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: allure-report/
+          retention-days: 30
