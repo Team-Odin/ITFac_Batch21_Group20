@@ -11,6 +11,7 @@ const { spawn } = require("node:child_process");
 const waitOn = require("wait-on");
 const path = require("node:path");
 const fs = require("node:fs");
+const { resetDatabaseIfEnabled } = require("./cypress/db/resetDb");
 
 require("dotenv").config();
 const targetUrl = process.env.API_BASE_URL || "http://localhost:8080";
@@ -42,7 +43,7 @@ module.exports = defineConfig({
   projectId: "aq8cdm",
   video: false,
   defaultCommandTimeout: 5000,
-  pageLoadTimeout: 30000,
+  pageLoadTimeout: 50000,
   reporter: "mocha-allure-reporter",
   reporterOptions: {
     resultsDir: "allure-results",
@@ -66,6 +67,13 @@ module.exports = defineConfig({
         "file:preprocessor",
         createBundler({ plugins: [createEsbuildPlugin(config)] }),
       );
+
+      on("task", {
+        "db:reset": async () => {
+          await resetDatabaseIfEnabled("task");
+          return null;
+        },
+      });
 
       // Ensure server is running BEFORE Cypress verifies baseUrl
       const ensureServer = async () => {
@@ -123,9 +131,28 @@ module.exports = defineConfig({
       // Start server as part of plugin setup so it's up before verification
       await ensureServer();
 
+      on("before:run", async () => {
+        try {
+          await resetDatabaseIfEnabled("before:run");
+        } catch (err) {
+          console.error("❌ Database reset (before:run) failed:", err?.message);
+          throw err;
+        }
+      });
+
       on("after:run", () => {
-        console.log("🛑 Stopping Local JAR...");
-        if (spawnedByCypress && javaProcess) javaProcess.kill();
+        // best-effort cleanup
+        return resetDatabaseIfEnabled("after:run")
+          .catch((err) => {
+            console.error(
+              "❌ Database reset (after:run) failed:",
+              err?.message,
+            );
+          })
+          .finally(() => {
+            console.log("🛑 Stopping Local JAR...");
+            if (spawnedByCypress && javaProcess) javaProcess.kill();
+          });
       });
 
       // Make .env values available to test code via Cypress.env(...)

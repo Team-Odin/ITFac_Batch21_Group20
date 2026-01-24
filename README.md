@@ -116,6 +116,15 @@ npx cypress run --spec cypress/e2e/healthcheck.feature
 
 ## Environment Variables
 
+### Optional: Database reset/cleanup for tests
+
+To ensure the database is clean after tests (and optionally before), Cypress can execute the SQL reset script at [sql/sample_plant_data_full.sql](sql/sample_plant_data_full.sql).
+
+- `DB_RESET_ON_RUN` (default: auto-enabled for localhost DB) — reset DB on `before:run`
+- `DB_RESET_AFTER_RUN` (default: auto-enabled for localhost DB) — reset DB on `after:run`
+- `DB_RESET_SQL_FILE` (default: `sql/sample_plant_data_full.sql`) — custom SQL reset file
+- `DB_RESET_ALLOW_NON_LOCAL` (default: `false`) — allow DB resets against non-local hosts (use with caution)
+
 Th# Clean test artifacts:
 
 ```bash
@@ -176,13 +185,4 @@ qa-training-app-tests/
 - For remote: Check network connectivity and firewall rules
 - Ensure special characters in password are not causing issues (wrap values in quotes in `.env` if needed)
 
-## Contributing
-
-1. Create a feature branch
-2. Make your changes
-3. Run tests to ensure nothing breaks
-4. Submit a pull request
-
-## License
-
-ISC
+npx cypress run --env tags="@API/TC30"
