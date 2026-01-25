@@ -21,7 +21,11 @@ try {
   const u = new URL(targetUrl);
   host = u.hostname || host;
   port = u.port || port;
-} catch (e) {}
+} catch (e) {
+  // If API_BASE_URL is not a valid URL, keep defaults.
+  // (This is intentional; Cypress baseUrl must still be set.)
+  void e;
+}
 
 let javaProcess;
 let spawnedByCypress = false;
@@ -84,7 +88,10 @@ module.exports = defineConfig({
             log: false,
           });
           return; // already up
-        } catch (e) {}
+        } catch (e) {
+          // Not up yet — proceed to spawn the app.
+          void e;
+        }
 
         console.log("Booting up JAR with custom properties...");
 
