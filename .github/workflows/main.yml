@@ -13,6 +13,19 @@ jobs:
   cypress-run:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: qa_training
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
 
     steps:
       - name: Checkout
@@ -68,20 +81,20 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Defaults for DB: use the workflow's MySQL service unless CI_DB_* secrets are provided.
+          DB_URL="${DB_URL:-jdbc:mysql://127.0.0.1:3306/qa_training?useSSL=false&allowPublicKeyRetrieval=true}"
+          DB_USERNAME="${DB_USERNAME:-root}"
+          DB_PASSWORD="${DB_PASSWORD:-root}"
+
           missing=0
-          for v in DB_URL DB_USERNAME DB_PASSWORD ADMIN_USER ADMIN_PASS USER_USER USER_PASS; do
+          for v in ADMIN_USER ADMIN_PASS USER_USER USER_PASS; do
             if [ -z "${!v:-}" ]; then
-              if [[ "$v" == DB_* ]]; then
-                echo "Missing required GitHub Secret: CI_${v}"
-              else
-                echo "Missing required GitHub Secret: CI_${v}"
-              fi
+              echo "Missing required GitHub Secret: CI_${v}"
               missing=1
             fi
           done
           if [ "$missing" -ne 0 ]; then
             printf "\nSet these in GitHub → Settings → Secrets and variables → Actions → Secrets:\n"
-            printf "- CI_DB_URL, CI_DB_USERNAME, CI_DB_PASSWORD\n"
             printf "- CI_ADMIN_USER, CI_ADMIN_PASS, CI_USER_USER, CI_USER_PASS\n"
             printf "\nOptional (Variables): CI_API_BASE_URL (defaults to http://localhost:8080)\n"
             printf "Optional (Variables) to enable DB resets on hosted DB (USE WITH CAUTION):\n"
@@ -169,10 +182,10 @@ jobs:
 
           # Fail only if we never got any HTTP response.
           if [[ ! -s logs/health.json ]]; then
-            echo "No response body from $HEALTH_URL" > logs/health.json
-          fi
-          if [[ "$http_code" == "000" || -z "$http_code" ]]; then
-            echo "Timed out waiting for any HTTP response from $HEALTH_URL" | tee -a logs/app.log
+                echo "DB_RESET_ALLOW_NON_LOCAL=\"$(esc \"${DB_RESET_ALLOW_NON_LOCAL:-false}\")\"";
+                echo "DB_RESET_ON_RUN=\"$(esc \"${DB_RESET_ON_RUN:-true}\")\"";
+                echo "DB_RESET_AFTER_RUN=\"$(esc \"${DB_RESET_AFTER_RUN:-true}\")\"";
+                echo "DB_RESET_SQL_FILE=\"$(esc \"${DB_RESET_SQL_FILE:-sql/sample_plant_data_full.sql}\")\"";
             exit 1
           fi
 
