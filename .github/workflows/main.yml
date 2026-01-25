@@ -56,11 +56,7 @@ jobs:
       - name: Install Dependencies
         shell: bash
         run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+          npm install
 
       - name: Prepare .env for CI
         shell: bash
