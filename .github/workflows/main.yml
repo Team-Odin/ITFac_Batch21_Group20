@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           if [ -f package-lock.json ]; then
-            npm install
+            npm ci
           else
             npm install
           fi
@@ -80,15 +80,15 @@ jobs:
             fi
           done
           if [ "$missing" -ne 0 ]; then
-            echo "\nSet these in GitHub → Settings → Secrets and variables → Actions → Secrets:"
-            echo "- CI_DB_URL, CI_DB_USERNAME, CI_DB_PASSWORD"
-            echo "- CI_ADMIN_USER, CI_ADMIN_PASS, CI_USER_USER, CI_USER_PASS"
-            echo "\nOptional (Variables): CI_API_BASE_URL (defaults to http://localhost:8080)"
-            echo "Optional (Variables) to enable DB resets on hosted DB (USE WITH CAUTION):"
-            echo "- CI_DB_RESET_ALLOW_NON_LOCAL=true"
-            echo "- CI_DB_RESET_ON_RUN=true"
-            echo "- CI_DB_RESET_AFTER_RUN=true"
-            echo "- CI_DB_RESET_SQL_FILE=sql/sample_plant_data_full.sql"
+            printf "\nSet these in GitHub → Settings → Secrets and variables → Actions → Secrets:\n"
+            printf "- CI_DB_URL, CI_DB_USERNAME, CI_DB_PASSWORD\n"
+            printf "- CI_ADMIN_USER, CI_ADMIN_PASS, CI_USER_USER, CI_USER_PASS\n"
+            printf "\nOptional (Variables): CI_API_BASE_URL (defaults to http://localhost:8080)\n"
+            printf "Optional (Variables) to enable DB resets on hosted DB (USE WITH CAUTION):\n"
+            printf "- CI_DB_RESET_ALLOW_NON_LOCAL=true\n"
+            printf "- CI_DB_RESET_ON_RUN=true\n"
+            printf "- CI_DB_RESET_AFTER_RUN=true\n"
+            printf "- CI_DB_RESET_SQL_FILE=sql/sample_plant_data_full.sql\n"
             exit 1
           fi
 
@@ -125,6 +125,7 @@ jobs:
         id: cypress
         if: steps.app_start.outcome == 'success'
         continue-on-error: true
+        shell: bash
         run: npm test
 
       - name: App log tail (if app failed)
@@ -159,6 +160,21 @@ jobs:
             allure-report/
           retention-days: 30
 
+      - name: Job Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Cypress CI Summary";
+            echo "";
+            echo "- App start: ${{ steps.app_start.outcome }}";
+            echo "- Cypress: ${{ steps.cypress.outcome }}";
+            echo "";
+            echo "Artifacts: see the uploaded \"test-artifacts\" (logs/app.log, screenshots, allure-report).";
+            echo "";
+            echo "If the app failed to start against hosted MySQL, common causes are: IP not allowlisted, SSL required, wrong credentials.";
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Stop App
         if: always()
         shell: bash
@@ -170,12 +186,16 @@ jobs:
       - name: Fail job if tests failed
         if: steps.cypress.outcome == 'failure'
         shell: bash
-        run: exit 1
+        run: |
+          echo "Marking job failed because Cypress tests failed."
+          exit 1
 
       - name: Fail job if app failed to start
         if: steps.app_start.outcome != 'success'
         shell: bash
-        run: exit 1
+        run: |
+          echo "Marking job failed because the app did not become healthy at /actuator/health."
+          exit 1
 
   deploy-allure-report:
     needs: cypress-run
