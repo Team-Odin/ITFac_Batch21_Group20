@@ -92,22 +92,31 @@ jobs:
             exit 1
           fi
 
-          cat > .env <<EOF
-          DB_USERNAME=${DB_USERNAME}
-          DB_PASSWORD=${DB_PASSWORD}
-          DB_URL=${DB_URL}
-          API_BASE_URL=${API_BASE_URL}
+          # Defaults
+          API_BASE_URL="${API_BASE_URL:-http://localhost:8080}"
 
-          ADMIN_USER=${ADMIN_USER}
-          ADMIN_PASS=${ADMIN_PASS}
-          USER_USER=${USER_USER}
-          USER_PASS=${USER_PASS}
+          # Write .env safely (no heredoc indentation issues; values are quoted for dotenv).
+          esc() {
+            # Escape backslashes and double quotes for dotenv "..." values
+            printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+          }
 
-          DB_RESET_ALLOW_NON_LOCAL=${DB_RESET_ALLOW_NON_LOCAL}
-          DB_RESET_ON_RUN=${DB_RESET_ON_RUN}
-          DB_RESET_AFTER_RUN=${DB_RESET_AFTER_RUN}
-          DB_RESET_SQL_FILE=${DB_RESET_SQL_FILE}
-          EOF
+          {
+            echo "DB_USERNAME=\"$(esc "$DB_USERNAME")\"";
+            echo "DB_PASSWORD=\"$(esc "$DB_PASSWORD")\"";
+            echo "DB_URL=\"$(esc "$DB_URL")\"";
+            echo "API_BASE_URL=\"$(esc "$API_BASE_URL")\"";
+            echo "";
+            echo "ADMIN_USER=\"$(esc "$ADMIN_USER")\"";
+            echo "ADMIN_PASS=\"$(esc "$ADMIN_PASS")\"";
+            echo "USER_USER=\"$(esc "$USER_USER")\"";
+            echo "USER_PASS=\"$(esc "$USER_PASS")\"";
+            echo "";
+            echo "DB_RESET_ALLOW_NON_LOCAL=\"$(esc "${DB_RESET_ALLOW_NON_LOCAL:-}")\"";
+            echo "DB_RESET_ON_RUN=\"$(esc "${DB_RESET_ON_RUN:-}")\"";
+            echo "DB_RESET_AFTER_RUN=\"$(esc "${DB_RESET_AFTER_RUN:-}")\"";
+            echo "DB_RESET_SQL_FILE=\"$(esc "${DB_RESET_SQL_FILE:-}")\"";
+          } > .env
 
       - name: Start App (capture logs)
         id: app_start
