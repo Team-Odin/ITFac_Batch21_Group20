@@ -13,6 +13,8 @@ jobs:
   cypress-run:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      TERM: xterm
     services:
       mysql:
         image: mysql:8.0
@@ -55,7 +57,7 @@ jobs:
         shell: bash
         run: |
           if [ -f package-lock.json ]; then
-            npm install
+            npm ci
           else
             npm install
           fi
@@ -63,6 +65,7 @@ jobs:
       - name: Prepare .env for CI
         shell: bash
         env:
+          USE_REMOTE_DB: ${{ vars.CI_USE_REMOTE_DB }}
           DB_URL: ${{ secrets['CI_DB_URL'] }}
           DB_USERNAME: ${{ secrets['CI_DB_USERNAME'] }}
           DB_PASSWORD: ${{ secrets['CI_DB_PASSWORD'] }}
@@ -81,10 +84,26 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Defaults for DB: use the workflow's MySQL service unless CI_DB_* secrets are provided.
-          DB_URL="${DB_URL:-jdbc:mysql://127.0.0.1:3306/qa_training?useSSL=false&allowPublicKeyRetrieval=true}"
-          DB_USERNAME="${DB_USERNAME:-root}"
-          DB_PASSWORD="${DB_PASSWORD:-root}"
+          use_remote="${USE_REMOTE_DB:-}"
+          use_remote="$(echo "$use_remote" | tr '[:upper:]' '[:lower:]' | xargs)"
+          if [ "$use_remote" = "true" ]; then
+            # Remote DB mode: require CI_DB_* secrets.
+            for v in DB_URL DB_USERNAME DB_PASSWORD; do
+              if [ -z "${!v:-}" ]; then
+                echo "Missing required GitHub Secret: CI_${v}"
+                exit 1
+              fi
+            done
+          else
+            # Default: use the workflow's local MySQL service (stable + allows DB reset).
+            DB_URL="jdbc:mysql://127.0.0.1:3306/qa_training?useSSL=false&allowPublicKeyRetrieval=true"
+            DB_USERNAME="root"
+            DB_PASSWORD="root"
+            DB_RESET_ALLOW_NON_LOCAL="false"
+            DB_RESET_ON_RUN="true"
+            DB_RESET_AFTER_RUN="true"
+            DB_RESET_SQL_FILE="sql/sample_plant_data_full.sql"
+          fi
 
           missing=0
           for v in ADMIN_USER ADMIN_PASS USER_USER USER_PASS; do
@@ -125,90 +144,29 @@ jobs:
             echo "USER_USER=\"$(esc "$USER_USER")\"";
             echo "USER_PASS=\"$(esc "$USER_PASS")\"";
             echo "";
-            echo "DB_RESET_ALLOW_NON_LOCAL=\"$(esc "${DB_RESET_ALLOW_NON_LOCAL:-}")\"";
-            echo "DB_RESET_ON_RUN=\"$(esc "${DB_RESET_ON_RUN:-}")\"";
-            echo "DB_RESET_AFTER_RUN=\"$(esc "${DB_RESET_AFTER_RUN:-}")\"";
-            echo "DB_RESET_SQL_FILE=\"$(esc "${DB_RESET_SQL_FILE:-}")\"";
+            echo "DB_RESET_ALLOW_NON_LOCAL=\"$(esc \"${DB_RESET_ALLOW_NON_LOCAL:-false}\")\"";
+            echo "DB_RESET_ON_RUN=\"$(esc \"${DB_RESET_ON_RUN:-}\")\"";
+            echo "DB_RESET_AFTER_RUN=\"$(esc \"${DB_RESET_AFTER_RUN:-}\")\"";
+            echo "DB_RESET_SQL_FILE=\"$(esc \"${DB_RESET_SQL_FILE:-sql/sample_plant_data_full.sql}\")\"";
           } > .env
 
-      - name: Start App (capture logs)
-        id: app_start
-        continue-on-error: true
-        shell: bash
-        run: |
-          mkdir -p logs
-          # Prefer API_BASE_URL from env or the generated .env, fallback to localhost.
-          BASE_URL="${API_BASE_URL:-}"
-          if [ -z "$BASE_URL" ] && [ -f .env ]; then
-            BASE_URL="$(grep -E '^[[:space:]]*API_BASE_URL=' .env | tail -n 1 | sed -E 's/^[[:space:]]*API_BASE_URL=//')"
-          fi
-          # .env values may be quoted; strip surrounding quotes for shell usage.
-          BASE_URL="${BASE_URL%\"}"
-          BASE_URL="${BASE_URL#\"}"
-          BASE_URL="${BASE_URL%\'}"
-          BASE_URL="${BASE_URL#\'}"
-          BASE_URL="${BASE_URL:-http://localhost:8080}"
-          HEALTH_URL="${BASE_URL%/}/actuator/health"
-          echo "health_url=${HEALTH_URL}" >> "$GITHUB_OUTPUT"
-
-          # If running against a remote environment, don't start a local app.
-          if [[ "$BASE_URL" == http://localhost:* || "$BASE_URL" == http://127.0.0.1:* ]]; then
-            npm start > logs/app.log 2>&1 &
-            echo $! > logs/app.pid
-          else
-            echo "Skipping local app start; using API_BASE_URL=$BASE_URL" | tee logs/app.log
-          fi
-
-          # Spring Boot + DB connections can take time; give it a bit longer.
-          # 1) Ensure the server is listening (works even if /actuator/health is secured).
-          if [[ "$BASE_URL" == http://localhost:* || "$BASE_URL" == http://127.0.0.1:* ]]; then
-            npx wait-on --timeout 180000 tcp:localhost:8080
-          fi
-
-          # 2) Prefer a 200 from /actuator/health, but treat any HTTP response as "reachable".
-          echo "Probing $HEALTH_URL ..." | tee -a logs/app.log
-          for i in {1..60}; do
-            http_code="$(curl -sS -o logs/health.json -w "%{http_code}" "$HEALTH_URL" || true)"
-            if [[ "$http_code" == "200" ]]; then
-              echo "Health OK (200)." | tee -a logs/app.log
-              break
-            fi
-            if [[ "$http_code" != "000" && -n "$http_code" ]]; then
-              echo "Health endpoint responded with HTTP $http_code (treating app as reachable)." | tee -a logs/app.log
-              break
-            fi
-            sleep 3
-          done
-
-          # Fail only if we never got any HTTP response.
-          if [[ ! -s logs/health.json ]]; then
-                echo "DB_RESET_ALLOW_NON_LOCAL=\"$(esc \"${DB_RESET_ALLOW_NON_LOCAL:-false}\")\"";
-                echo "DB_RESET_ON_RUN=\"$(esc \"${DB_RESET_ON_RUN:-true}\")\"";
-                echo "DB_RESET_AFTER_RUN=\"$(esc \"${DB_RESET_AFTER_RUN:-true}\")\"";
-                echo "DB_RESET_SQL_FILE=\"$(esc \"${DB_RESET_SQL_FILE:-sql/sample_plant_data_full.sql}\")\"";
-            exit 1
-          fi
+          # Also export for subsequent steps (without relying on parsing .env).
+          {
+            echo "DB_URL=$DB_URL";
+            echo "DB_USERNAME=$DB_USERNAME";
+            echo "DB_PASSWORD=$DB_PASSWORD";
+            echo "API_BASE_URL=$API_BASE_URL";
+            echo "DB_RESET_ALLOW_NON_LOCAL=${DB_RESET_ALLOW_NON_LOCAL:-false}";
+            echo "DB_RESET_ON_RUN=${DB_RESET_ON_RUN:-}";
+            echo "DB_RESET_AFTER_RUN=${DB_RESET_AFTER_RUN:-}";
+            echo "DB_RESET_SQL_FILE=${DB_RESET_SQL_FILE:-sql/sample_plant_data_full.sql}";
+          } >> "$GITHUB_ENV"
 
       - name: Run Cypress Tests
         id: cypress
-        if: steps.app_start.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: npm test
-
-      - name: App log tail (if app failed)
-        if: steps.app_start.outcome != 'success'
-        shell: bash
-        run: |
-          echo "App failed to become healthy; showing last 200 lines of logs/app.log"
-          tail -n 200 logs/app.log || true
-
-      - name: Cypress log tail (if tests failed)
-        if: steps.cypress.outcome == 'failure'
-        shell: bash
-        run: |
-          echo "Cypress step failed; showing last 200 lines of logs/app.log"
-          tail -n 200 logs/app.log || true
 
       - name: Generate Allure Report
         if: always()
@@ -221,7 +179,6 @@ jobs:
         with:
           name: test-artifacts
           path: |
-            logs/
             cypress/screenshots/
             cypress/videos/
             allure-results/
@@ -235,34 +192,18 @@ jobs:
           {
             echo "## Cypress CI Summary";
             echo "";
-            echo "- App start: ${{ steps.app_start.outcome }}";
             echo "- Cypress: ${{ steps.cypress.outcome }}";
             echo "";
-            echo "Artifacts: see the uploaded \"test-artifacts\" (logs/app.log, screenshots, allure-report).";
+            echo "Artifacts: see the uploaded \"test-artifacts\" (screenshots, allure-report).";
             echo "";
-            echo "If the app failed to start against hosted MySQL, common causes are: IP not allowlisted, SSL required, wrong credentials.";
+            echo "If tests fail in CI, download screenshots from the artifact for details.";
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Stop App
-        if: always()
-        shell: bash
-        run: |
-          if [ -f logs/app.pid ]; then
-            kill $(cat logs/app.pid) || true
-          fi
 
       - name: Fail job if tests failed
         if: steps.cypress.outcome == 'failure'
         shell: bash
         run: |
           echo "Marking job failed because Cypress tests failed."
-          exit 1
-
-      - name: Fail job if app failed to start
-        if: steps.app_start.outcome != 'success'
-        shell: bash
-        run: |
-          echo "Marking job failed because the app did not become healthy at ${{ steps.app_start.outputs.health_url || '/actuator/health' }}."
           exit 1
 
   deploy-allure-report:
