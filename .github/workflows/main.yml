@@ -115,11 +115,26 @@ jobs:
         shell: bash
         run: |
           mkdir -p logs
-          npm start > logs/app.log 2>&1 &
-          echo $! > logs/app.pid
+          # Prefer API_BASE_URL from env or the generated .env, fallback to localhost.
+          BASE_URL="${API_BASE_URL:-}"
+          if [ -z "$BASE_URL" ] && [ -f .env ]; then
+            BASE_URL="$(grep -E '^[[:space:]]*API_BASE_URL=' .env | tail -n 1 | sed -E 's/^[[:space:]]*API_BASE_URL=//')"
+          fi
+          BASE_URL="${BASE_URL:-http://localhost:8080}"
+          HEALTH_URL="${BASE_URL%/}/actuator/health"
+          echo "health_url=${HEALTH_URL}" >> "$GITHUB_OUTPUT"
 
-          npx wait-on --timeout 60000 http://localhost:8080/actuator/health
-          curl -fsS http://localhost:8080/actuator/health | tee logs/health.json
+          # If running against a remote environment, don't start a local app.
+          if [[ "$BASE_URL" == http://localhost:* || "$BASE_URL" == http://127.0.0.1:* ]]; then
+            npm start > logs/app.log 2>&1 &
+            echo $! > logs/app.pid
+          else
+            echo "Skipping local app start; using API_BASE_URL=$BASE_URL" | tee logs/app.log
+          fi
+
+          # Spring Boot + DB connections can take time; give it a bit longer.
+          npx wait-on --timeout 180000 "$HEALTH_URL"
+          curl -fsS "$HEALTH_URL" | tee logs/health.json
 
       - name: Run Cypress Tests
         id: cypress
@@ -194,7 +209,7 @@ jobs:
         if: steps.app_start.outcome != 'success'
         shell: bash
         run: |
-          echo "Marking job failed because the app did not become healthy at /actuator/health."
+          echo "Marking job failed because the app did not become healthy at ${{ steps.app_start.outputs.health_url || '/actuator/health' }}."
           exit 1
 
   deploy-allure-report:
