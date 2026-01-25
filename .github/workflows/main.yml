@@ -129,6 +129,11 @@ jobs:
           if [ -z "$BASE_URL" ] && [ -f .env ]; then
             BASE_URL="$(grep -E '^[[:space:]]*API_BASE_URL=' .env | tail -n 1 | sed -E 's/^[[:space:]]*API_BASE_URL=//')"
           fi
+          # .env values may be quoted; strip surrounding quotes for shell usage.
+          BASE_URL="${BASE_URL%\"}"
+          BASE_URL="${BASE_URL#\"}"
+          BASE_URL="${BASE_URL%\'}"
+          BASE_URL="${BASE_URL#\'}"
           BASE_URL="${BASE_URL:-http://localhost:8080}"
           HEALTH_URL="${BASE_URL%/}/actuator/health"
           echo "health_url=${HEALTH_URL}" >> "$GITHUB_OUTPUT"
