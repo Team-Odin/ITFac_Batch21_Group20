@@ -53,7 +53,7 @@ jobs:
           DB_URL: ${{ secrets['CI_DB_URL'] }}
           DB_USERNAME: ${{ secrets['CI_DB_USERNAME'] }}
           DB_PASSWORD: ${{ secrets['CI_DB_PASSWORD'] }}
-          API_BASE_URL: ${{ vars['CI_API_BASE_URL'] || 'http://localhost:8080' }}
+          API_BASE_URL: ${{ vars.CI_API_BASE_URL }}
 
           ADMIN_USER: ${{ secrets['CI_ADMIN_USER'] }}
           ADMIN_PASS: ${{ secrets['CI_ADMIN_PASS'] }}
@@ -61,10 +61,10 @@ jobs:
           USER_PASS: ${{ secrets['CI_USER_PASS'] }}
 
           # Optional DB reset controls (recommended only for a dedicated CI database)
-          DB_RESET_ALLOW_NON_LOCAL: ${{ vars['CI_DB_RESET_ALLOW_NON_LOCAL'] }}
-          DB_RESET_ON_RUN: ${{ vars['CI_DB_RESET_ON_RUN'] }}
-          DB_RESET_AFTER_RUN: ${{ vars['CI_DB_RESET_AFTER_RUN'] }}
-          DB_RESET_SQL_FILE: ${{ vars['CI_DB_RESET_SQL_FILE'] }}
+          DB_RESET_ALLOW_NON_LOCAL: ${{ vars.CI_DB_RESET_ALLOW_NON_LOCAL }}
+          DB_RESET_ON_RUN: ${{ vars.CI_DB_RESET_ON_RUN }}
+          DB_RESET_AFTER_RUN: ${{ vars.CI_DB_RESET_AFTER_RUN }}
+          DB_RESET_SQL_FILE: ${{ vars.CI_DB_RESET_SQL_FILE }}
         run: |
           set -euo pipefail
 
@@ -133,8 +133,34 @@ jobs:
           fi
 
           # Spring Boot + DB connections can take time; give it a bit longer.
-          npx wait-on --timeout 180000 "$HEALTH_URL"
-          curl -fsS "$HEALTH_URL" | tee logs/health.json
+          # 1) Ensure the server is listening (works even if /actuator/health is secured).
+          if [[ "$BASE_URL" == http://localhost:* || "$BASE_URL" == http://127.0.0.1:* ]]; then
+            npx wait-on --timeout 180000 tcp:localhost:8080
+          fi
+
+          # 2) Prefer a 200 from /actuator/health, but treat any HTTP response as "reachable".
+          echo "Probing $HEALTH_URL ..." | tee -a logs/app.log
+          for i in {1..60}; do
+            http_code="$(curl -sS -o logs/health.json -w "%{http_code}" "$HEALTH_URL" || true)"
+            if [[ "$http_code" == "200" ]]; then
+              echo "Health OK (200)." | tee -a logs/app.log
+              break
+            fi
+            if [[ "$http_code" != "000" && -n "$http_code" ]]; then
+              echo "Health endpoint responded with HTTP $http_code (treating app as reachable)." | tee -a logs/app.log
+              break
+            fi
+            sleep 3
+          done
+
+          # Fail only if we never got any HTTP response.
+          if [[ ! -s logs/health.json ]]; then
+            echo "No response body from $HEALTH_URL" > logs/health.json
+          fi
+          if [[ "$http_code" == "000" || -z "$http_code" ]]; then
+            echo "Timed out waiting for any HTTP response from $HEALTH_URL" | tee -a logs/app.log
+            exit 1
+          fi
 
       - name: Run Cypress Tests
         id: cypress
