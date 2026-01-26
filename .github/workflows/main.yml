@@ -218,7 +218,7 @@ jobs:
   deploy-allure-report:
     needs: cypress-run
     runs-on: ubuntu-latest
-    if: always() && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    if: always() && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/feature/workflow-test')
     permissions:
       contents: write
     steps:
