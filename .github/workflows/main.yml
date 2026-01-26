@@ -75,10 +75,32 @@ jobs:
             fi
           done
           if [ "$missing" -ne 0 ]; then
-            printf "\nSet these in GitHub → Settings → Secrets and variables → Actions → Secrets:\n"
-            printf "- CI_ADMIN_USER, CI_ADMIN_PASS, CI_USER_USER, CI_USER_PASS\n"
-            exit 1
+            echo "CI_SECRETS_AVAILABLE=false" >> "$GITHUB_ENV"
+            printf "\nSkipping Cypress: required CI_* login secrets are not available in this run.\n"
+            printf "(This is expected on PRs from forks, where secrets are not exposed.)\n"
+
+            # Still write a minimal .env so other steps don't break.
+            {
+              echo "DB_USERNAME=\"$(esc "$DB_USERNAME")\"";
+              echo "DB_PASSWORD=\"$(esc "$DB_PASSWORD")\"";
+              echo "DB_URL=\"$(esc "$DB_URL")\"";
+              echo "API_BASE_URL=\"$(esc "$API_BASE_URL")\"";
+              echo "";
+              echo "ADMIN_USER=\"\"";
+              echo "ADMIN_PASS=\"\"";
+              echo "USER_USER=\"\"";
+              echo "USER_PASS=\"\"";
+              echo "";
+              echo "DB_RESET_ALLOW_NON_LOCAL=\"$(esc "${DB_RESET_ALLOW_NON_LOCAL:-false}")\"";
+              echo "DB_RESET_ON_RUN=\"$(esc "${DB_RESET_ON_RUN:-}")\"";
+              echo "DB_RESET_AFTER_RUN=\"$(esc "${DB_RESET_AFTER_RUN:-}")\"";
+              echo "DB_RESET_SQL_FILE=\"$(esc "${DB_RESET_SQL_FILE:-sql/sample_plant_data_full.sql}")\"";
+            } > .env
+
+            exit 0
           fi
+
+          echo "CI_SECRETS_AVAILABLE=true" >> "$GITHUB_ENV"
 
           # Defaults
           API_BASE_URL="http://localhost:8080"
@@ -120,6 +142,7 @@ jobs:
 
       - name: Run Cypress Tests
         id: cypress
+        if: env.CI_SECRETS_AVAILABLE == 'true'
         continue-on-error: true
         shell: bash
         run: npm test
