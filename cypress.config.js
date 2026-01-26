@@ -44,7 +44,6 @@ const resolveJavaCmd = () => {
 };
 
 module.exports = defineConfig({
-  projectId: "aq8cdm",
   video: false,
   defaultCommandTimeout: 5000,
   pageLoadTimeout: 50000,
