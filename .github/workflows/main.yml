@@ -2,7 +2,7 @@ name: Cypress Tests & Allure Report
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, feature/workflow-test]
   pull_request:
     branches: [main, master]
 
