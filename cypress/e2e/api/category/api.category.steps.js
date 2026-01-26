@@ -97,7 +97,7 @@ After((info) => {
   const scenarioName = info?.pickle?.name ?? "";
   const shouldCleanupTc21 =
     scenarioName.includes("API/TC21") &&
-    Boolean(createdCategoryIdForTc22) &&
+    Array.isArray(createdCategoryIdsForTc21) &&
     createdCategoryIdsForTc21.length > 0;
 
   if (!shouldCleanupTc21) return;
@@ -161,6 +161,15 @@ After((info) => {
     headers: { Authorization: authHeader },
     failOnStatusCode: false,
   });
+});
+
+// -------------------------------------------------------------
+// DB cleanup (best-effort) after every Category API scenario
+// -------------------------------------------------------------
+After(() => {
+  // Uses SQL reset when allowed (local DB by default).
+  // If DB reset is skipped (e.g., non-local DB without opt-in), scenario-level API cleanup hooks still run.
+  return cy.task("db:reset", null, { log: false });
 });
 
 // =============================================================

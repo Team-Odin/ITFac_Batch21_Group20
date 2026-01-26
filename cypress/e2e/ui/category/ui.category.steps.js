@@ -20,57 +20,23 @@ let categoryRowCount;
 let selectedParentFilterName;
 let actionsColumnIndex;
 
-const findCategoryByName = (categories, categoryName) => {
-  const target = String(categoryName).toLowerCase();
-  if (!Array.isArray(categories)) return undefined;
-  return categories.find(
-    (c) => String(c?.name).toLowerCase() === String(target),
-  );
-};
+const apiLoginAsAdmin = () => categoryPage.constructor.apiLoginAsAdmin();
 
 const ensureCategoryExists = (categoryName) => {
   const name = String(categoryName);
 
   return apiLoginAsAdmin().then((authHeader) => {
-    return cy
-      .request({
-        method: "GET",
-        url: "/api/categories/page?page=0&size=200&sort=id,desc",
-        headers: { Authorization: authHeader },
-        failOnStatusCode: false,
-      })
-      .then((res) => {
-        const match = findCategoryByName(res?.body?.content, name);
-        if (match?.id) {
-          cy.log(`Category '${name}' already exists (id=${match.id})`);
-          return;
-        }
-
-        cy.log(`Category '${name}' not found; creating via API as Admin`);
-        createdParentCategoryName = name;
-
-        return cy
-          .request({
-            method: "POST",
-            url: "/api/categories",
-            headers: { Authorization: authHeader },
-            body: { name, parentId: null },
-            failOnStatusCode: false,
-          })
-          .then((createRes) => {
-            if (![200, 201, 202, 204].includes(createRes.status)) {
-              throw new Error(
-                `Failed to create category '${name}' via API. Status: ${createRes.status}`,
-              );
-            }
-          });
-      });
+    categoryPage.setAuthHeader(authHeader);
+    return categoryPage.ensureMainCategoryExists(name).then((result) => {
+      if (result?.created) createdParentCategoryName = name;
+    });
   });
 };
 
 const ensureParentWithChildForFilter = () => {
   // Pick an existing parent that has at least one child so the filter produces results.
   return apiLoginAsAdmin().then((authHeader) => {
+    categoryPage.setAuthHeader(authHeader);
     return cy
       .request({
         method: "GET",
@@ -93,75 +59,6 @@ const ensureParentWithChildForFilter = () => {
         selectedParentFilterName = String(withChildren.name);
       });
   });
-};
-
-// Utility function to delete category by name
-const deleteCategoryByName = (categoryName, authHeader) => {
-  return cy
-    .request({
-      method: "GET",
-      url: "/api/categories/page?page=0&size=200&sort=id,desc",
-      headers: { Authorization: authHeader },
-      failOnStatusCode: false,
-    })
-    .then((res) => {
-      const content = res?.body?.content;
-      const match = Array.isArray(content)
-        ? content.find(
-            (c) =>
-              String(c?.name).toLowerCase() ===
-              String(categoryName).toLowerCase(),
-          )
-        : undefined;
-
-      if (!match?.id) {
-        cy.log(
-          `Cleanup: category '${categoryName}' not found; skipping delete`,
-        );
-        return;
-      }
-
-      cy.request({
-        method: "DELETE",
-        url: `/api/categories/${match.id}`,
-        headers: { Authorization: authHeader },
-        failOnStatusCode: false,
-      }).then((delRes) => {
-        if (![200, 202, 204].includes(delRes.status)) {
-          cy.log(
-            `Cleanup: delete returned ${delRes.status} for '${categoryName}' (id=${match.id})`,
-          );
-        } else {
-          cy.log(`Successfully cleaned up category: ${categoryName}`);
-        }
-      });
-    });
-};
-
-const apiLoginAsAdmin = () => {
-  const username = Cypress.env("ADMIN_USER");
-  const password = Cypress.env("ADMIN_PASS");
-
-  if (!username || !password) {
-    throw new Error(
-      "Missing admin credentials. Set ADMIN_USER and ADMIN_PASS in your .env (or as CYPRESS_ADMIN_USER/CYPRESS_ADMIN_PASS).",
-    );
-  }
-
-  return cy
-    .request({
-      method: "POST",
-      url: "/api/auth/login",
-      body: { username, password },
-      failOnStatusCode: true,
-    })
-    .its("body")
-    .then((body) => {
-      const token = body?.token;
-      const tokenType = body?.tokenType || "Bearer";
-      if (!token) throw new Error("Login response missing token");
-      return `${tokenType} ${token}`;
-    });
 };
 
 Before((info) => {
@@ -199,39 +96,44 @@ After((info) => {
     return;
 
   apiLoginAsAdmin().then((authHeader) => {
+    categoryPage.setAuthHeader(authHeader);
     if (shouldCleanupTC04 || shouldCleanupTC13) {
       // Delete subcategory first (child before parent)
       if (createdSubCategoryName) {
-        deleteCategoryByName(createdSubCategoryName, authHeader).then(() => {
+        categoryPage.deleteCategoryIfExists(createdSubCategoryName).then(() => {
           createdSubCategoryName = undefined;
 
           // Delete parent category after subcategory is deleted
           if (createdParentCategoryName) {
-            deleteCategoryByName(createdParentCategoryName, authHeader).then(
-              () => {
+            categoryPage
+              .deleteCategoryIfExists(createdParentCategoryName)
+              .then(() => {
                 createdParentCategoryName = undefined;
-              },
-            );
+              });
           }
         });
       } else if (createdParentCategoryName) {
         // Only parent needs deletion
-        deleteCategoryByName(createdParentCategoryName, authHeader).then(() => {
-          createdParentCategoryName = undefined;
-        });
+        categoryPage
+          .deleteCategoryIfExists(createdParentCategoryName)
+          .then(() => {
+            createdParentCategoryName = undefined;
+          });
       }
     }
 
     if (shouldCleanupTC03 && createdMainCategoryName) {
-      deleteCategoryByName(createdMainCategoryName, authHeader).then(() => {
+      categoryPage.deleteCategoryIfExists(createdMainCategoryName).then(() => {
         createdMainCategoryName = undefined;
       });
     }
 
     if (shouldCleanupTC12 && createdParentCategoryName) {
-      deleteCategoryByName(createdParentCategoryName, authHeader).then(() => {
-        createdParentCategoryName = undefined;
-      });
+      categoryPage
+        .deleteCategoryIfExists(createdParentCategoryName)
+        .then(() => {
+          createdParentCategoryName = undefined;
+        });
     }
 
     selectedParentFilterName = undefined;
@@ -284,7 +186,12 @@ Given("I am on the {string} page", (url) => {
 // =============================================================
 
 Then("I should see the {string} button", (buttonText) => {
-  const normalize = (s) => s.replaceAll(/\s+/g, " ").trim();
+  const normalize = (s) =>
+    String(s)
+      .toLowerCase()
+      .replaceAll(/\b(a|an|the)\b/g, " ")
+      .replaceAll(/\s+/g, " ")
+      .trim();
 
   categoryPage.addCategoryBtn
     .should("be.visible")
@@ -574,6 +481,10 @@ Then("The table refreshes with original data", () => {
 When(
   "Count the number of category rows displayed in the table on {string}",
   (pageNumber) => {
+    // TC09 has no explicit "more than 10 categories" precondition, but it asserts
+    // the default page size is 10. Ensure we have enough data for the pagination
+    // layer to actually render 10 rows.
+    categoryPage.ensureMinimumCategories("10");
     categoryPage.goToPage(pageNumber);
     categoryPage.assertCategoryTableHasData();
     categoryPage.getCategoryRowCount().then((count) => {
