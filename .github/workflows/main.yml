@@ -2,19 +2,17 @@ name: Cypress Tests & Allure Report
 
 on:
   push:
-    branches: [main, master, feature/workflow-test]
+    branches: [main, master]
   pull_request:
     branches: [main, master]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   cypress-run:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      TERM: xterm
     services:
       mysql:
         image: mysql:8.0
@@ -45,14 +43,6 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Tool Versions
-        shell: bash
-        run: |
-          node -v
-          npm -v
-          java -version
-          npx cypress --version || true
-
       - name: Install Dependencies
         shell: bash
         run: |
@@ -61,45 +51,21 @@ jobs:
       - name: Prepare .env for CI
         shell: bash
         env:
-          USE_REMOTE_DB: ${{ vars.CI_USE_REMOTE_DB }}
-          DB_URL: ${{ secrets['CI_DB_URL'] }}
-          DB_USERNAME: ${{ secrets['CI_DB_USERNAME'] }}
-          DB_PASSWORD: ${{ secrets['CI_DB_PASSWORD'] }}
-          API_BASE_URL: ${{ vars.CI_API_BASE_URL }}
-
           ADMIN_USER: ${{ secrets['CI_ADMIN_USER'] }}
           ADMIN_PASS: ${{ secrets['CI_ADMIN_PASS'] }}
           USER_USER: ${{ secrets['CI_USER_USER'] }}
           USER_PASS: ${{ secrets['CI_USER_PASS'] }}
-
-          # Optional DB reset controls (recommended only for a dedicated CI database)
-          DB_RESET_ALLOW_NON_LOCAL: ${{ vars.CI_DB_RESET_ALLOW_NON_LOCAL }}
-          DB_RESET_ON_RUN: ${{ vars.CI_DB_RESET_ON_RUN }}
-          DB_RESET_AFTER_RUN: ${{ vars.CI_DB_RESET_AFTER_RUN }}
-          DB_RESET_SQL_FILE: ${{ vars.CI_DB_RESET_SQL_FILE }}
         run: |
           set -euo pipefail
 
-          use_remote="${USE_REMOTE_DB:-}"
-          use_remote="$(echo "$use_remote" | tr '[:upper:]' '[:lower:]' | xargs)"
-          if [ "$use_remote" = "true" ]; then
-            # Remote DB mode: require CI_DB_* secrets.
-            for v in DB_URL DB_USERNAME DB_PASSWORD; do
-              if [ -z "${!v:-}" ]; then
-                echo "Missing required GitHub Secret: CI_${v}"
-                exit 1
-              fi
-            done
-          else
-            # Default: use the workflow's local MySQL service (stable + allows DB reset).
-            DB_URL="jdbc:mysql://127.0.0.1:3306/qa_training?useSSL=false&allowPublicKeyRetrieval=true"
-            DB_USERNAME="root"
-            DB_PASSWORD="root"
-            DB_RESET_ALLOW_NON_LOCAL="false"
-            DB_RESET_ON_RUN="true"
-            DB_RESET_AFTER_RUN="true"
-            DB_RESET_SQL_FILE="sql/sample_plant_data_full.sql"
-          fi
+          # Use the workflow's local MySQL service (stable + allows DB reset).
+          DB_URL="jdbc:mysql://127.0.0.1:3306/qa_training?useSSL=false&allowPublicKeyRetrieval=true"
+          DB_USERNAME="root"
+          DB_PASSWORD="root"
+          DB_RESET_ALLOW_NON_LOCAL="false"
+          DB_RESET_ON_RUN="true"
+          DB_RESET_AFTER_RUN="true"
+          DB_RESET_SQL_FILE="sql/sample_plant_data_full.sql"
 
           missing=0
           for v in ADMIN_USER ADMIN_PASS USER_USER USER_PASS; do
@@ -111,17 +77,11 @@ jobs:
           if [ "$missing" -ne 0 ]; then
             printf "\nSet these in GitHub → Settings → Secrets and variables → Actions → Secrets:\n"
             printf "- CI_ADMIN_USER, CI_ADMIN_PASS, CI_USER_USER, CI_USER_PASS\n"
-            printf "\nOptional (Variables): CI_API_BASE_URL (defaults to http://localhost:8080)\n"
-            printf "Optional (Variables) to enable DB resets on hosted DB (USE WITH CAUTION):\n"
-            printf "- CI_DB_RESET_ALLOW_NON_LOCAL=true\n"
-            printf "- CI_DB_RESET_ON_RUN=true\n"
-            printf "- CI_DB_RESET_AFTER_RUN=true\n"
-            printf "- CI_DB_RESET_SQL_FILE=sql/sample_plant_data_full.sql\n"
             exit 1
           fi
 
           # Defaults
-          API_BASE_URL="${API_BASE_URL:-http://localhost:8080}"
+          API_BASE_URL="http://localhost:8080"
 
           # Write .env safely (no heredoc indentation issues; values are quoted for dotenv).
           esc() {
@@ -194,20 +154,6 @@ jobs:
             allure-report/
           retention-days: 30
 
-      - name: Job Summary
-        if: always()
-        shell: bash
-        run: |
-          {
-            echo "## Cypress CI Summary";
-            echo "";
-            echo "- Cypress: ${{ steps.cypress.outcome }}";
-            echo "";
-            echo "Artifacts: see the uploaded \"test-artifacts\" (screenshots, allure-report).";
-            echo "";
-            echo "If tests fail in CI, download screenshots from the artifact for details.";
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Fail job if tests failed
         if: github.event_name == 'pull_request' && steps.cypress.outcome == 'failure'
         shell: bash
@@ -218,7 +164,7 @@ jobs:
   deploy-allure-report:
     needs: cypress-run
     runs-on: ubuntu-latest
-    if: always() && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/feature/workflow-test')
+    if: always() && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     permissions:
       contents: write
     steps:
