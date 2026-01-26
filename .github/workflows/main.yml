@@ -166,8 +166,48 @@ jobs:
 
       - name: Generate Allure Report
         if: always()
+        shell: bash
         run: |
-          npx allure generate allure-results --clean -o allure-report || true
+          set -euo pipefail
+
+          mkdir -p allure-report
+
+          if [ ! -d allure-results ] || [ -z "$(ls -A allure-results 2>/dev/null || true)" ]; then
+            cat > allure-report/index.html <<'HTML'
+            <!doctype html>
+            <html lang="en">
+              <head>
+                <meta charset="utf-8" />
+                <meta name="viewport" content="width=device-width,initial-scale=1" />
+                <title>Allure Report (not available)</title>
+              </head>
+              <body>
+                <h1>Allure Report not available</h1>
+                <p>No <code>allure-results</code> were produced for this run.</p>
+                <p>Check the workflow artifacts for screenshots/logs.</p>
+              </body>
+            </html>
+            HTML
+            exit 0
+          fi
+
+          if ! npx allure generate allure-results --clean -o allure-report; then
+            cat > allure-report/index.html <<'HTML'
+            <!doctype html>
+            <html lang="en">
+              <head>
+                <meta charset="utf-8" />
+                <meta name="viewport" content="width=device-width,initial-scale=1" />
+                <title>Allure Report (generation failed)</title>
+              </head>
+              <body>
+                <h1>Allure Report generation failed</h1>
+                <p>The workflow attempted to run <code>allure generate</code> but it failed.</p>
+                <p>Check the workflow logs and artifacts for details.</p>
+              </body>
+            </html>
+            HTML
+          fi
 
       - name: Upload Logs, Screenshots, Videos, Allure
         if: always()
@@ -205,7 +245,7 @@ jobs:
   deploy-allure-report:
     needs: cypress-run
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    if: always() && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     permissions:
       contents: write
     steps:
@@ -217,6 +257,29 @@ jobs:
         with:
           name: test-artifacts
           path: artifacts
+
+      - name: Ensure report exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/allure-report
+          if [ ! -f artifacts/allure-report/index.html ]; then
+            cat > artifacts/allure-report/index.html <<'HTML'
+            <!doctype html>
+            <html lang="en">
+              <head>
+                <meta charset="utf-8" />
+                <meta name="viewport" content="width=device-width,initial-scale=1" />
+                <title>Allure Report (missing)</title>
+              </head>
+              <body>
+                <h1>Allure Report missing</h1>
+                <p>The Allure report folder was not found in artifacts for this run.</p>
+                <p>Check the workflow artifacts for screenshots/logs.</p>
+              </body>
+            </html>
+            HTML
+          fi
 
       - name: Deploy Allure Report to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3

@@ -194,6 +194,75 @@ class CategoryPage {
     cy.scrollTo("bottom", { ensureScrollable: false });
   }
 
+  ensureAuthHeaderForApi() {
+    if (this.authHeader) return cy.wrap(this.authHeader, { log: false });
+
+    return CategoryPage.apiLoginAsAdmin().then((header) => {
+      this.setAuthHeader(header);
+      return header;
+    });
+  }
+
+  getTotalCategoriesForApi(authHeader) {
+    return cy
+      .request({
+        method: "GET",
+        url: "/api/categories/page?page=0&size=1",
+        headers: { Authorization: authHeader },
+        failOnStatusCode: false,
+      })
+      .then((res) => {
+        const body = res?.body;
+        const total =
+          body &&
+          typeof body === "object" &&
+          Object.hasOwn(body, "totalElements")
+            ? Number(body.totalElements)
+            : undefined;
+
+        if (Number.isFinite(total)) return total;
+        if (body && typeof body === "object" && Array.isArray(body.content)) {
+          return body.content.length;
+        }
+        return 0;
+      });
+  }
+
+  seedCategoriesForApi(authHeader, count) {
+    const howMany = Number(count);
+    if (!Number.isFinite(howMany) || howMany <= 0) {
+      return cy.wrap(null, { log: false });
+    }
+
+    const indices = Array.from({ length: howMany }, (_, i) => i);
+    return cy.wrap(indices, { log: false }).each((i) => {
+      const idx =
+        typeof i === "number" || typeof i === "string" ? i : JSON.stringify(i);
+      const unique = Math.random().toString(16).slice(2);
+      const categoryName = `AutoTestCat_${Date.now()}_${unique}_${idx}`;
+      return CategoryPage.apiCreateMainCategory(authHeader, categoryName);
+    });
+  }
+
+  createCategoriesViaUi(count) {
+    const howMany = Number(count);
+    if (!Number.isFinite(howMany) || howMany <= 0) return;
+
+    for (let i = 0; i < howMany; i++) {
+      const categoryName = `AutoTestCat_${Date.now()}_${i}`;
+      this.addCategoryBtn.should("be.visible").click();
+      cy.get('input[id="name"]')
+        .should("be.visible")
+        .clear()
+        .type(categoryName);
+      cy.get('button[type="submit"]').should("be.visible").click();
+      cy.location("pathname", { timeout: 10000 }).should(
+        "eq",
+        "/ui/categories",
+      );
+    }
+  }
+
   ensureMinimumCategories(minCount) {
     const minimumRequired = Number.parseInt(String(minCount).trim(), 10);
     if (!Number.isFinite(minimumRequired) || minimumRequired < 0) {
@@ -203,102 +272,14 @@ class CategoryPage {
     // Feature steps say: "with more than X categories exists"
     const targetCount = minimumRequired + 1;
 
-    const ensureAuthHeader = () => {
-      if (this.authHeader) return cy.wrap(this.authHeader, { log: false });
-
-      return CategoryPage.apiLoginAsAdmin().then((header) => {
-        this.setAuthHeader(header);
-        return header;
-      });
-    };
-
-    const getTotalCategories = () => {
-      return ensureAuthHeader().then((header) =>
-        cy
-          .request({
-            method: "GET",
-            url: "/api/categories/page?page=0&size=1",
-            headers: { Authorization: header },
-            failOnStatusCode: false,
-          })
-          .then((res) => {
-            const body = res?.body;
-            const total =
-              body &&
-              typeof body === "object" &&
-              Object.hasOwn(body, "totalElements")
-                ? Number(body.totalElements)
-                : undefined;
-
-            if (Number.isFinite(total)) return total;
-
-            // Fallback if backend doesn't return a Page shape.
-            if (
-              body &&
-              typeof body === "object" &&
-              Array.isArray(body.content)
-            ) {
-              return body.content.length;
-            }
-
-            return 0;
-          }),
-      );
-    };
-
-    const createCategoriesViaApi = (missingCount) => {
-      if (missingCount <= 0) return cy.wrap(null, { log: false });
-
-      const count = Number(missingCount);
-      const indices = Array.from({ length: count }, (_, i) => i);
-
-      return ensureAuthHeader().then((header) => {
-        return cy.wrap(indices, { log: false }).each((i) => {
-          const idx =
-            typeof i === "number" || typeof i === "string"
-              ? i
-              : JSON.stringify(i);
-          const unique = Math.random().toString(16).slice(2);
-          const categoryName = `AutoTestCat_${Date.now()}_${unique}_${idx}`;
-          return cy
-            .request({
-              method: "POST",
-              url: "/api/categories",
-              headers: { Authorization: header },
-              body: { name: categoryName, parent: null },
-              failOnStatusCode: false,
-            })
-            .then((res) => {
-              if (![200, 201].includes(res.status)) {
-                throw new Error(
-                  `Failed to create category via API. Status=${res.status} body=${JSON.stringify(res.body)}`,
-                );
-              }
-            });
-        });
-      });
-    };
-
-    const fallbackCreateViaUi = () => {
-      cy.log("Falling back to UI category creation (no API creds?)");
-      for (let i = 0; i < targetCount + 1; i++) {
-        const categoryName = `AutoTestCat_${Date.now()}_${i}`;
-        this.addCategoryBtn.should("be.visible").click();
-        cy.get('input[id="name"]')
-          .should("be.visible")
-          .clear()
-          .type(categoryName);
-        cy.get('button[type="submit"]').should("be.visible").click();
-        cy.location("pathname", { timeout: 10000 }).should(
-          "eq",
-          "/ui/categories",
-        );
-      }
-      cy.reload();
-    };
-
-    return getTotalCategories()
-      .then((currentTotal) => {
+    return this.ensureAuthHeaderForApi()
+      .then((header) => {
+        return this.getTotalCategoriesForApi(header).then((currentTotal) => ({
+          header,
+          currentTotal,
+        }));
+      })
+      .then(({ header, currentTotal }) => {
         if (currentTotal >= targetCount) {
           cy.log(`Category precondition OK: ${currentTotal} >= ${targetCount}`);
           return;
@@ -308,17 +289,19 @@ class CategoryPage {
         cy.log(
           `Seeding categories via API: need ${targetCount}, have ${currentTotal}, creating ${missing}`,
         );
-        return createCategoriesViaApi(missing);
+        return this.seedCategoriesForApi(header, missing);
       })
       .then(
         () => {
-          // Refresh UI so the new rows/pagination render.
           cy.reload();
         },
         (e) => {
-          // Keep tests runnable even when API creds aren't configured.
           cy.log(`ensureMinimumCategories API path failed: ${e?.message || e}`);
-          return cy.get("body").then(() => fallbackCreateViaUi());
+          cy.log("Falling back to UI category creation");
+          return cy.get("body").then(() => {
+            this.createCategoriesViaUi(targetCount + 1);
+            cy.reload();
+          });
         },
       );
   }
@@ -386,6 +369,31 @@ class CategoryPage {
         const tokenType = body?.tokenType || "Bearer";
         if (!token) throw new Error("Login response missing token");
         return `${tokenType} ${token}`;
+      });
+  }
+
+  static apiCreateMainCategory(authHeader, name) {
+    const header = String(authHeader ?? "");
+    if (!header) throw new Error("authHeader is required");
+
+    const categoryName = String(name ?? "");
+    if (!categoryName) throw new Error("Category name is required");
+
+    return cy
+      .request({
+        method: "POST",
+        url: "/api/categories",
+        headers: { Authorization: header },
+        body: { name: categoryName, parent: null },
+        failOnStatusCode: false,
+      })
+      .then((res) => {
+        if (![200, 201].includes(res.status)) {
+          throw new Error(
+            `Failed to create category via API. Status=${res.status} body=${JSON.stringify(res.body)}`,
+          );
+        }
+        return res;
       });
   }
 
