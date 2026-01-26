@@ -1,6 +1,7 @@
 class PlantPage {
   get plantsMenu() {
-    return cy.contains('a[href="/ui/plants"]', "Plants");
+    // Some builds may not keep the exact href attribute, but the visible label is stable.
+    return cy.contains("a", "Plants");
   }
 
   get plantsTable() {

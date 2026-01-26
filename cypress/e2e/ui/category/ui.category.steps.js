@@ -481,6 +481,10 @@ Then("The table refreshes with original data", () => {
 When(
   "Count the number of category rows displayed in the table on {string}",
   (pageNumber) => {
+    // TC09 has no explicit "more than 10 categories" precondition, but it asserts
+    // the default page size is 10. Ensure we have enough data for the pagination
+    // layer to actually render 10 rows.
+    categoryPage.ensureMinimumCategories("10");
     categoryPage.goToPage(pageNumber);
     categoryPage.assertCategoryTableHasData();
     categoryPage.getCategoryRowCount().then((count) => {
