@@ -15,6 +15,10 @@ class AddCategoryPage {
     return cy.get('button[type="submit"]');
   }
 
+  get cancelBtn() {
+    return cy.get('a[href="/ui/categories"]').contains('Cancel');
+  }
+
   addACategory(categoryValue) {
     this.categoryNameField.should("be.visible").clear().type(categoryValue);
   }
@@ -27,6 +31,19 @@ class AddCategoryPage {
     }
 
     this.submitBtn.should("be.visible").click();
+  }
+
+  get categoryNameInput() {
+    return cy.get('#name'); // Adjust selector based on your HTML
+  }
+
+  get saveButton() {
+    return cy.get('button[type="submit"]');
+  }
+
+  get errorMessage() {
+    // This typically targets a span or div with a specific class like .text-danger
+    return cy.get('.invalid-feedback, .text-danger');
   }
 
   visit() {
