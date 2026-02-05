@@ -48,12 +48,13 @@ Feature: Category Management Module
         When Send POST request with body:
             """
             {
-                "name": "",
+                "name": null,
                 "parent": null
             }
             """
         Then Status Code: 400 Bad Request
-        And Error message: "Category name is required"
+        And Response body matches standard error schema
+        And Error message: "Category name is mandatory"
 
     @API/TC20
     Scenario: API/TC20 Verify Create Validation: Name Too Long
