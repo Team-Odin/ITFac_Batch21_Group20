@@ -30,7 +30,7 @@ try {
 } catch (e) {
   // If API_BASE_URL is not a valid URL, keep defaults.
   // (This is intentional; Cypress baseUrl must still be set.)
-  void e;
+  // ignore
 }
 
 let javaProcess;
@@ -99,7 +99,7 @@ module.exports = defineConfig({
           return; // already up
         } catch (e) {
           // Not up yet — proceed to spawn the app.
-          void e;
+          // ignore
         }
 
         console.log("Booting up JAR with custom properties...");
@@ -115,7 +115,8 @@ module.exports = defineConfig({
             `--spring.config.location=file:${configPath}/application.properties`,
             `--server.port=${port}`,
             `--spring.datasource.password=${process.env.DB_PASSWORD}`,
-            `--api.base-url=${process.env.API_BASE_URL}`,
+            // Use resolved targetUrl so we never pass "undefined" (non-absolute URI) to Spring.
+            `--api.base-url=${targetUrl}`,
             `--spring.datasource.username=${process.env.DB_USERNAME}`,
             `--spring.datasource.url=${process.env.DB_URL}`,
           ],
