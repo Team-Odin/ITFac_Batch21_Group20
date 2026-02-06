@@ -1,8 +1,8 @@
 @api @category
 Feature: Category Management Module
-    As an admin or user
-    I want to manage categories
-    So that I can organize plants in the system
+  As an admin or user
+  I want to manage categories
+  So that I can organize plants in the system
 
   @API/TC16
   Scenario: API/TC16 Verify Create Main Category API
@@ -11,8 +11,8 @@ Feature: Category Management Module
     When Send POST request with body:
       """
       {
-          "name": "API_Main",
-          "parent": null
+        "name": "API_Main",
+        "parent": null
       }
       """
     Then Status Code: 201 Created
@@ -26,8 +26,8 @@ Feature: Category Management Module
     When Send POST request with body:
       """
       {
-          "name": "API_Sub",
-          "parent": "Fruits"
+        "name": "API_Sub",
+        "parent": "Fruits"
       }
       """
     Then Status Code: 201 Created
@@ -48,8 +48,8 @@ Feature: Category Management Module
     When Send POST request with body:
       """
       {
-          "name": "",
-          "parent": null
+        "name": null,
+        "parent": null
       }
       """
     Then Status Code: 400 Bad Request
@@ -62,8 +62,8 @@ Feature: Category Management Module
     When Send POST request with body:
       """
       {
-          "name": "SuperMarket",
-          "parent": null
+        "name": "SuperMarket",
+        "parent": null
       }
       """
     Then Status Code: 400 Bad Request
@@ -157,7 +157,9 @@ Feature: Category Management Module
       """
       {
         "name": "flowers02",
-        "parent": { "id": 1 }
+        "parent": {
+          "id": 1
+        }
       }
       """
     Then Status Code: 200 OK

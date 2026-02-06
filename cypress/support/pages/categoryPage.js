@@ -1,6 +1,7 @@
 class CategoryPage {
   get addCategoryBtn() {
-    return cy.get('a[href="/ui/categories/add"]');
+    // Prefer a resilient locator based on the visible control label.
+    return cy.contains("a", /add\s+category/i);
   }
 
   get searchNameInput() {

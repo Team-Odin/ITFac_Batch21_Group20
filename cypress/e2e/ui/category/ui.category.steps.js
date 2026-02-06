@@ -658,8 +658,10 @@ Then("The {string} button is NOT present", (buttonText) => {
   // TC11 specifically targets "Add Category"; we keep a generic step text for reuse.
   if (normalized.toLowerCase() === "add category") {
     cy.get("body").then(($body) => {
-      const selector = 'a[href="/ui/categories/add"]';
-      const matches = $body.find(selector);
+      const re = /add\s+category/i;
+      const matches = $body
+        .find("a,button")
+        .filter((_, el) => re.test(String(el?.innerText ?? "")));
 
       if (matches.length === 0) {
         expect(matches.length, "Add Category control present in DOM").to.eq(0);
@@ -667,7 +669,7 @@ Then("The {string} button is NOT present", (buttonText) => {
       }
 
       // If the element exists but access control hides it, assert it's not visible.
-      cy.get(selector).should("not.be.visible");
+      cy.wrap(matches).should("not.be.visible");
     });
 
     return;
