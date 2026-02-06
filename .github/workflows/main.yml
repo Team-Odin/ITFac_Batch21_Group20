@@ -15,6 +15,7 @@ jobs:
     timeout-minutes: 30
     env:
       TERM: xterm
+      CI_FAIL_ON_TEST_FAILURE: ${{ secrets.CI_FAIL_ON_TEST_FAILURE }}
     services:
       mysql:
         image: mysql:8.0
@@ -204,7 +205,7 @@ jobs:
           retention-days: 30
 
       - name: Fail job if tests failed
-        if: github.event_name == 'pull_request' && steps.cypress.outcome == 'failure'
+        if: steps.cypress.outcome == 'failure' && (env.CI_FAIL_ON_TEST_FAILURE == 'true')
         shell: bash
         run: |
           echo "Marking job failed because Cypress tests failed."

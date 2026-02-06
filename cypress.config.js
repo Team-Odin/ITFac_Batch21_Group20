@@ -23,18 +23,19 @@ require("dotenv").config({
 const targetUrl = process.env.API_BASE_URL || "http://localhost:8080";
 let host = "localhost";
 let port = "8080";
-try {
+if (URL.canParse(targetUrl)) {
   const u = new URL(targetUrl);
   host = u.hostname || host;
   port = u.port || port;
-} catch (e) {
-  // If API_BASE_URL is not a valid URL, keep defaults.
-  // (This is intentional; Cypress baseUrl must still be set.)
-  // ignore
+} else if (process.env.DEBUG) {
+  console.log(
+    `ℹ️  API_BASE_URL is not a valid absolute URL (${targetUrl}); using defaults`,
+  );
 }
 
 let javaProcess;
 let spawnedByCypress = false;
+let stoppingJava = false;
 
 const resolveJavaCmd = () => {
   const javaHome = process.env.JAVA_HOME;
@@ -86,20 +87,24 @@ module.exports = defineConfig({
 
       // Ensure server is running BEFORE Cypress verifies baseUrl
       const ensureServer = async () => {
-        try {
-          await waitOn({
-            resources: [`tcp:${host}:${port}`],
-            timeout: 1000,
-            log: false,
-          });
+        const alreadyUp = await waitOn({
+          resources: [`tcp:${host}:${port}`],
+          timeout: 1000,
+          log: false,
+        })
+          .then(() => true)
+          .catch(() => false);
+
+        if (alreadyUp) {
           console.log(
             `ℹ️  Server already running at tcp:${host}:${port} — Cypress will NOT respawn the JAR. ` +
               "If you changed .env (DB_URL/DB_USERNAME/DB_PASSWORD), stop the server and re-run Cypress.",
           );
           return; // already up
-        } catch (e) {
-          // Not up yet — proceed to spawn the app.
-          // ignore
+        }
+
+        if (process.env.DEBUG) {
+          console.log(`ℹ️  Server not reachable yet; spawning JAR`);
         }
 
         console.log("Booting up JAR with custom properties...");
@@ -126,6 +131,16 @@ module.exports = defineConfig({
           console.error("Java spawn error:", err.message);
         });
         javaProcess.on("exit", (code, signal) => {
+          const expectedShutdown =
+            stoppingJava === true || signal === "SIGTERM" || code === 143;
+
+          if (expectedShutdown) {
+            console.log(
+              `ℹ️  Java process stopped code=${code} signal=${signal}`,
+            );
+            return;
+          }
+
           console.error(
             `Java process exited early code=${code} signal=${signal}`,
           );
@@ -140,7 +155,10 @@ module.exports = defineConfig({
           console.error(
             `❌ Server at tcp:${host}:${port} failed to start. ${err}`,
           );
-          if (javaProcess) javaProcess.kill();
+          if (javaProcess) {
+            stoppingJava = true;
+            javaProcess.kill();
+          }
           process.exit(1);
         }
       };
@@ -168,7 +186,10 @@ module.exports = defineConfig({
           })
           .finally(() => {
             console.log("🛑 Stopping Local JAR...");
-            if (spawnedByCypress && javaProcess) javaProcess.kill();
+            if (spawnedByCypress && javaProcess) {
+              stoppingJava = true;
+              javaProcess.kill();
+            }
           });
       });
 
