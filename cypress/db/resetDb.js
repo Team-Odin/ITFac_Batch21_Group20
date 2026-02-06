@@ -79,7 +79,9 @@ const getDbConnectionOptions = () => {
   }
 
   const pathname = String(url.pathname || "");
-  const database = (pathname.startsWith("/") ? pathname.slice(1) : pathname).trim();
+  const database = (
+    pathname.startsWith("/") ? pathname.slice(1) : pathname
+  ).trim();
   if (!database) {
     throw new Error(
       `DB_URL is missing database name in path: ${dbUrlRaw} (expected .../qa_training)`,
@@ -113,8 +115,7 @@ const getDbConnectionOptions = () => {
 };
 
 const resolveSqlFilePath = () => {
-  const raw =
-    process.env.DB_RESET_SQL_FILE || "sql/sample_plant_data_full.sql";
+  const raw = process.env.DB_RESET_SQL_FILE || "sql/sample_plant_data_full.sql";
   // Support values like "sql/file.sql" and also accidental nested quoting from CI.
   const unquoted = stripOuterQuotes(raw);
   return path.resolve(__dirname, "..", "..", unquoted);
