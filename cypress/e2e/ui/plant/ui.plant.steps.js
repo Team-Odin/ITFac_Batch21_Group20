@@ -5,7 +5,10 @@ import {
   Before,
 } from "@badeball/cypress-cucumber-preprocessor";
 import { plantPage } from "../../../support/pages/plantPage";
-import { loginAsAdmin } from "../../preconditions/login.preconditions";
+import {
+  loginAsAdmin,
+  loginAsUser,
+} from "../../preconditions/login.preconditions";
 import { addPlantPage } from "../../../support/pages/addPlantPage";
 
 Given("I am on the Dashboard page", () => {
@@ -34,7 +37,6 @@ When("I click the {string} menu", (menuName) => {
       cy.visit("/ui/plants");
     });
   }
-
   throw new Error(`Unknown menu: ${JSON.stringify(menuName)}`);
 });
 
@@ -77,6 +79,7 @@ Given("The application is running", () => {
 
 Given("I am logged in as {string}", (role) => {
   if (role === "Admin") loginAsAdmin();
+  if (role === "Standard User") loginAsUser();
 });
 
 Given("Plants exist in the Plant list", () => {
@@ -90,6 +93,7 @@ Given("Plants exist in the Plant list", () => {
 
 Given("I am on the {string} page", (pageName) => {
   if (pageName === "Plants") plantPage.visitPlantPage();
+  if (pageName === "Add Plant") addPlantPage.visitAddPlantPage();
 });
 
 Given("A plant named {string} exists in the list", (plantName) => {
@@ -140,8 +144,35 @@ When(
   },
 );
 
+When(
+  "I enter plant details with name {string} and stock {string}",
+  (plantName, stockQty) => {
+    createdPlantName = plantName;
+
+    addPlantPage.nameInput().clear().type(plantName);
+    addPlantPage.categorySelect().select(1);
+    addPlantPage.quantityInput().should("be.visible").clear().type(stockQty);
+  },
+);
+
 When('Click the "Save" button', () => {
   addPlantPage.saveButton().click();
+});
+
+When('Click the "Cancel" button', () => {
+  cy.contains("button, a", /cancel/i, { timeout: 10000 })
+    .should("be.visible")
+    .click({ force: true });
+});
+
+When('Click the "Category" dropdown', () => {
+  addPlantPage.categorySelect().then(($el) => {
+    if ($el.is("select")) {
+      cy.wrap($el).should("be.visible");
+    } else {
+      cy.wrap($el).should("be.visible").click();
+    }
+  });
 });
 
 When('Inspect the "Actions" column for the {string} row', (plantName) => {
@@ -230,6 +261,52 @@ When("Cancel the deletion on the popup", () => {
   cy.on("window:confirm", () => false);
 });
 
+When("Click on the {string} link in the navigation menu", (link) => {
+  const name = link.toLowerCase();
+
+  if (name === "plants") {
+    plantPage.plantsMenu.should("be.visible").click();
+    return;
+  }
+
+  throw new Error(`Unknown navigation link: ${link}`);
+});
+
+When("Scroll to the bottom of the plant list table", () => {
+  plantPage.plantsTable.scrollIntoView().then(() => {
+    cy.get("table tbody tr", { timeout: 10000 }).should("exist");
+  });
+});
+When('Click on the "Next" page button', () => {
+  // Assuming pagination buttons have class 'pagination' or a button labeled "Next"
+  cy.get(".pagination").contains("Next").should("be.visible").click();
+});
+
+When('I click the "Name" column header once', () => {
+  cy.get("table thead tr th").contains("Name").should("be.visible").click();
+});
+
+When('I click the "Name" column header twice', () => {
+  cy.get("table thead tr th")
+    .contains("Name")
+    .should("be.visible")
+    .click()
+    .click(); // second click
+});
+
+When("Select {string} from the Category dropdown", (category) => {
+  cy.get('select[name="categoryId"]', { timeout: 5000 }).then(($select) => {
+    if ($select.length > 0) {
+      cy.wrap($select).should("be.visible").select(category);
+    } else {
+      cy.get(".ant-select", { timeout: 5000 }).first().click();
+      cy.get(".ant-select-item-option", { timeout: 5000 })
+        .contains(category)
+        .click();
+    }
+  });
+});
+
 // =====================
 // Then steps
 // =====================
@@ -291,6 +368,14 @@ Then("The system redirects to the Plant list", () => {
   cy.get("table tbody tr").should("have.length.greaterThan", 0);
 });
 
+Then(
+  "The system navigates back to the Plant list page {string}",
+  (expectedUrl) => {
+    cy.url().should("include", expectedUrl);
+    cy.get("table tbody tr").should("have.length.greaterThan", 0);
+  },
+);
+
 Then("The plant table displays the name {string}", (plantName) => {
   cy.get("table tbody tr", { timeout: 10000 })
     .contains("td", plantName)
@@ -309,11 +394,111 @@ Then(
   },
 );
 
-Then("The plant named {string} should be removed from the list", (plantName) => {
-  cy.get("table tbody").should("be.visible");
+Then(
+  "The plant named {string} should be removed from the list",
+  (plantName) => {
+    cy.get("table tbody").should("be.visible");
 
-  // Verify the plant row no longer exists
-  cy.get("table tbody tr")
-    .contains("td", plantName)
-    .should("not.exist");
+    // Verify the plant row no longer exists
+    cy.get("table tbody tr").contains("td", plantName).should("not.exist");
+  },
+);
+
+Then("Only sub-categories are listed in the dropdown", () => {
+  addPlantPage
+    .categorySelect()
+    .should("be.visible")
+    .find("option")
+    .then(($options) => {
+      const uiCategories = [...$options]
+        .map((o) => o.innerText.trim())
+        .filter((t) => t !== "" && t !== "Select Category");
+
+      cy.log("UI Categories:", uiCategories);
+
+      // ❗ Correct validation:
+      // Parent categories like "All / Root / Main" should NOT exist
+      const parentKeywords = ["	Outdoor", "Indoor", "Anthurium", "T2184402"];
+
+      uiCategories.forEach((cat) => {
+        parentKeywords.forEach((word) => {
+          expect(cat).to.not.include(word);
+        });
+      });
+
+      // At least one sub category must be shown
+      expect(uiCategories.length).to.be.greaterThan(0);
+    });
 });
+
+// Display Plant List Page for non admin user
+Then("The system redirects to the Plant list page", () => {
+  cy.url().should("include", "/ui/plants");
+
+  cy.get("table", { timeout: 10000 }).should("be.visible");
+
+  cy.get("table tbody tr").should("have.length.greaterThan", 0);
+});
+Then("The plant list table is displayed", () => {
+  cy.get("table", { timeout: 10000 }).should("be.visible");
+  cy.get("table tbody tr").should("have.length.greaterThan", 0);
+});
+
+Then('The "Add a Plant" button is NOT visible', () => {
+  cy.contains("button", "Add a Plant", { timeout: 0 }).should("not.exist");
+});
+
+Then('The active page indicator highlights "2"', () => {
+  // Assuming active page has class "active" or "ant-pagination-item-active"
+  cy.get(".pagination").contains("2").parent().should("have.class", "active");
+});
+
+Then("The column is sorted {string}", (direction) => {
+  cy.get("table tbody tr", { timeout: 10000 }).should(
+    "have.length.greaterThan",
+    0,
+  );
+
+  cy.get("table tbody tr td:first-child").then(($cells) => {
+    const names = $cells
+      .map((i, el) =>
+        el.innerText
+          .replace(/[\u200B-\u200D\uFEFF]/g, "") // remove zero-width chars
+          .replace(/\s+/g, " ") // collapse spaces
+          .replace(/[^a-zA-Z0-9 ]/g, "") // remove special chars/icons
+          .trim()
+          .toLowerCase(),
+      )
+      .get();
+
+    cy.log("Names in table:", JSON.stringify(names));
+
+    const sortedNames = [...names].sort((a, b) => a.localeCompare(b));
+
+    if (direction === "ascending") {
+      expect(names, "Check ascending sort").to.deep.equal(sortedNames);
+    } else if (direction === "descending") {
+      expect(names, "Check descending sort").to.deep.equal(
+        [...sortedNames].reverse(),
+      );
+    }
+  });
+});
+
+Then(
+  "The plant list should display only plants with category {string}",
+  (category) => {
+    cy.get("table tbody tr", { timeout: 10000 }).should(
+      "have.length.greaterThan",
+      0,
+    );
+
+    cy.get("table tbody tr").each(($row) => {
+      cy.wrap($row)
+        .find("td")
+        .eq(1) // second column
+        .invoke("text")
+        .should("eq", category);
+    });
+  },
+);
