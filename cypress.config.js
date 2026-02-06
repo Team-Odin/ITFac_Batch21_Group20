@@ -13,7 +13,13 @@ const path = require("node:path");
 const fs = require("node:fs");
 const { resetDatabaseIfEnabled } = require("./cypress/db/resetDb");
 
-require("dotenv").config();
+// Load environment variables from the repo's .env.
+// Note: dotenv does NOT override existing process.env values unless override:true.
+// For local dev, we want .env to win so switching DB_URL works predictably.
+require("dotenv").config({
+  path: path.join(__dirname, ".env"),
+  override: true,
+});
 const targetUrl = process.env.API_BASE_URL || "http://localhost:8080";
 let host = "localhost";
 let port = "8080";
@@ -46,7 +52,7 @@ const resolveJavaCmd = () => {
 module.exports = defineConfig({
   video: false,
   defaultCommandTimeout: 5000,
-  pageLoadTimeout: 50000,
+  pageLoadTimeout: 20000,
   reporter: "mocha-allure-reporter",
   reporterOptions: {
     resultsDir: "allure-results",
@@ -86,6 +92,10 @@ module.exports = defineConfig({
             timeout: 1000,
             log: false,
           });
+          console.log(
+            `ℹ️  Server already running at tcp:${host}:${port} — Cypress will NOT respawn the JAR. ` +
+              "If you changed .env (DB_URL/DB_USERNAME/DB_PASSWORD), stop the server and re-run Cypress.",
+          );
           return; // already up
         } catch (e) {
           // Not up yet — proceed to spawn the app.
