@@ -1404,32 +1404,50 @@ When('I navigate to the "Categories" page', () => {
 });
 
 When('I count all categories across all pagination pages', () => {
-  accumulatedTableCount = 0; // Reset counter
+  accumulatedTableCount = 0;
 
-  function countRowsOnPage() {
-    // 1. Count rows on current visible page
+  const countCurrentPage = () => {
+    // Count table rows
     categoryPage.categoriesTable.find('tbody tr').then(($rows) => {
-      // Ensure we aren't counting the "No data available" row
       if ($rows.length > 0 && !$rows.text().includes('No data')) {
         accumulatedTableCount += $rows.length;
       }
     });
+  };
 
-    // 2. Check for the 'Next' button
+  const goToNextPageIfPossible = () => {
     cy.get('body').then(($body) => {
-      // Find 'Next' link that isn't disabled
-      const nextBtn = $body.find('li.next:not(.disabled) a, a:contains("Next"):not(.disabled)');
+      // Find NEXT button
+      const nextBtn = $body.find('a.page-link:contains("Next")');
 
-      if (nextBtn.length > 0) {
-        cy.wrap(nextBtn).click();
-        cy.wait(500); // Standard wait for table to refresh
-        countRowsOnPage(); // Recursive call
+      // Check if disabled (pointer-events: none OR disabled class)
+      const isDisabled =
+        nextBtn.length === 0 ||
+        nextBtn.hasClass('disabled') ||
+        nextBtn.closest('li').hasClass('disabled') ||
+        nextBtn.css('pointer-events') === 'none';
+
+      if (isDisabled) {
+        cy.log('Reached last pagination page');
+        return;
       }
-    });
-  }
 
-  countRowsOnPage();
+      cy.wrap(nextBtn)
+        .should('be.visible')
+        .click();
+
+      cy.wait(500);
+
+      countCurrentPage();
+      goToNextPageIfPossible(); // recursion
+    });
+  };
+
+  // Start process
+  countCurrentPage();
+  goToNextPageIfPossible();
 });
+
 
 Then('The total count should match the Dashboard summary', () => {
   // Use cy.then to ensure the asynchronous recursion has finished
