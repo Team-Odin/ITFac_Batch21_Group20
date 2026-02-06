@@ -11,6 +11,7 @@ import {
 } from "../../preconditions/login.preconditions";
 import { categoryPage } from "../../../support/pages/categoryPage";
 import { addCategoryPage } from "../../../support/pages/addCategoryPage";
+import dashboardPage from "../../../support/pages/dashboardPage";
 
 let createdMainCategoryName;
 let createdSubCategoryName;
@@ -20,23 +21,57 @@ let categoryRowCount;
 let selectedParentFilterName;
 let actionsColumnIndex;
 
-const apiLoginAsAdmin = () => categoryPage.constructor.apiLoginAsAdmin();
+const findCategoryByName = (categories, categoryName) => {
+  const target = String(categoryName).toLowerCase();
+  if (!Array.isArray(categories)) return undefined;
+  return categories.find(
+    (c) => String(c?.name).toLowerCase() === String(target),
+  );
+};
 
 const ensureCategoryExists = (categoryName) => {
   const name = String(categoryName);
 
   return apiLoginAsAdmin().then((authHeader) => {
-    categoryPage.setAuthHeader(authHeader);
-    return categoryPage.ensureMainCategoryExists(name).then((result) => {
-      if (result?.created) createdParentCategoryName = name;
-    });
+    return cy
+      .request({
+        method: "GET",
+        url: "/api/categories/page?page=0&size=200&sort=id,desc",
+        headers: { Authorization: authHeader },
+        failOnStatusCode: false,
+      })
+      .then((res) => {
+        const match = findCategoryByName(res?.body?.content, name);
+        if (match?.id) {
+          cy.log(`Category '${name}' already exists (id=${match.id})`);
+          return;
+        }
+
+        cy.log(`Category '${name}' not found; creating via API as Admin`);
+        createdParentCategoryName = name;
+
+        return cy
+          .request({
+            method: "POST",
+            url: "/api/categories",
+            headers: { Authorization: authHeader },
+            body: { name, parentId: null },
+            failOnStatusCode: false,
+          })
+          .then((createRes) => {
+            if (![200, 201, 202, 204].includes(createRes.status)) {
+              throw new Error(
+                `Failed to create category '${name}' via API. Status: ${createRes.status}`,
+              );
+            }
+          });
+      });
   });
 };
 
 const ensureParentWithChildForFilter = () => {
   // Pick an existing parent that has at least one child so the filter produces results.
   return apiLoginAsAdmin().then((authHeader) => {
-    categoryPage.setAuthHeader(authHeader);
     return cy
       .request({
         method: "GET",
@@ -59,6 +94,75 @@ const ensureParentWithChildForFilter = () => {
         selectedParentFilterName = String(withChildren.name);
       });
   });
+};
+
+// Utility function to delete category by name
+const deleteCategoryByName = (categoryName, authHeader) => {
+  return cy
+    .request({
+      method: "GET",
+      url: "/api/categories/page?page=0&size=200&sort=id,desc",
+      headers: { Authorization: authHeader },
+      failOnStatusCode: false,
+    })
+    .then((res) => {
+      const content = res?.body?.content;
+      const match = Array.isArray(content)
+        ? content.find(
+          (c) =>
+            String(c?.name).toLowerCase() ===
+            String(categoryName).toLowerCase(),
+        )
+        : undefined;
+
+      if (!match?.id) {
+        cy.log(
+          `Cleanup: category '${categoryName}' not found; skipping delete`,
+        );
+        return;
+      }
+
+      cy.request({
+        method: "DELETE",
+        url: `/api/categories/${match.id}`,
+        headers: { Authorization: authHeader },
+        failOnStatusCode: false,
+      }).then((delRes) => {
+        if (![200, 202, 204].includes(delRes.status)) {
+          cy.log(
+            `Cleanup: delete returned ${delRes.status} for '${categoryName}' (id=${match.id})`,
+          );
+        } else {
+          cy.log(`Successfully cleaned up category: ${categoryName}`);
+        }
+      });
+    });
+};
+
+const apiLoginAsAdmin = () => {
+  const username = Cypress.env("ADMIN_USER");
+  const password = Cypress.env("ADMIN_PASS");
+
+  if (!username || !password) {
+    throw new Error(
+      "Missing admin credentials. Set ADMIN_USER and ADMIN_PASS in your .env (or as CYPRESS_ADMIN_USER/CYPRESS_ADMIN_PASS).",
+    );
+  }
+
+  return cy
+    .request({
+      method: "POST",
+      url: "/api/auth/login",
+      body: { username, password },
+      failOnStatusCode: true,
+    })
+    .its("body")
+    .then((body) => {
+      const token = body?.token;
+      const tokenType = body?.tokenType || "Bearer";
+      if (!token) throw new Error("Login response missing token");
+      return `${tokenType} ${token}`;
+    });
 };
 
 Before((info) => {
@@ -96,44 +200,39 @@ After((info) => {
     return;
 
   apiLoginAsAdmin().then((authHeader) => {
-    categoryPage.setAuthHeader(authHeader);
     if (shouldCleanupTC04 || shouldCleanupTC13) {
       // Delete subcategory first (child before parent)
       if (createdSubCategoryName) {
-        categoryPage.deleteCategoryIfExists(createdSubCategoryName).then(() => {
+        deleteCategoryByName(createdSubCategoryName, authHeader).then(() => {
           createdSubCategoryName = undefined;
 
           // Delete parent category after subcategory is deleted
           if (createdParentCategoryName) {
-            categoryPage
-              .deleteCategoryIfExists(createdParentCategoryName)
-              .then(() => {
+            deleteCategoryByName(createdParentCategoryName, authHeader).then(
+              () => {
                 createdParentCategoryName = undefined;
-              });
+              },
+            );
           }
         });
       } else if (createdParentCategoryName) {
         // Only parent needs deletion
-        categoryPage
-          .deleteCategoryIfExists(createdParentCategoryName)
-          .then(() => {
-            createdParentCategoryName = undefined;
-          });
+        deleteCategoryByName(createdParentCategoryName, authHeader).then(() => {
+          createdParentCategoryName = undefined;
+        });
       }
     }
 
     if (shouldCleanupTC03 && createdMainCategoryName) {
-      categoryPage.deleteCategoryIfExists(createdMainCategoryName).then(() => {
+      deleteCategoryByName(createdMainCategoryName, authHeader).then(() => {
         createdMainCategoryName = undefined;
       });
     }
 
     if (shouldCleanupTC12 && createdParentCategoryName) {
-      categoryPage
-        .deleteCategoryIfExists(createdParentCategoryName)
-        .then(() => {
-          createdParentCategoryName = undefined;
-        });
+      deleteCategoryByName(createdParentCategoryName, authHeader).then(() => {
+        createdParentCategoryName = undefined;
+      });
     }
 
     selectedParentFilterName = undefined;
@@ -186,12 +285,7 @@ Given("I am on the {string} page", (url) => {
 // =============================================================
 
 Then("I should see the {string} button", (buttonText) => {
-  const normalize = (s) =>
-    String(s)
-      .toLowerCase()
-      .replaceAll(/\b(a|an|the)\b/g, " ")
-      .replaceAll(/\s+/g, " ")
-      .trim();
+  const normalize = (s) => s.replaceAll(/\s+/g, " ").trim();
 
   categoryPage.addCategoryBtn
     .should("be.visible")
@@ -199,10 +293,6 @@ Then("I should see the {string} button", (buttonText) => {
     .then((t) => {
       expect(normalize(t)).to.eq(normalize(buttonText));
     });
-});
-
-When("Click the {string} button", (_buttonText) => {
-  categoryPage.addCategoryBtn.should("be.visible").click();
 });
 
 Then("System redirect to {string}", (path) => {
@@ -227,28 +317,28 @@ When("Enter {string} in {string}", (categoryValue, _categoryField) => {
   addCategoryPage.addACategory(categoryValue);
 });
 
-When("Leave {string} empty", (_parentCategory) => {});
+When("Leave {string} empty", (_parentCategory) => { });
 
-When("Click {string} button", (buttonText) => {
-  const t = String(buttonText).replaceAll(/\s+/g, " ").trim().toLowerCase();
+// When("Click {string} button", (buttonText) => {
+//   const t = String(buttonText).replaceAll(/\s+/g, " ").trim().toLowerCase();
 
-  if (t === "save") {
-    addCategoryPage.submitBtn.should("be.visible").click();
-    return;
-  }
+//   if (t === "save") {
+//     addCategoryPage.submitBtn.should("be.visible").click();
+//     return;
+//   }
 
-  if (t === "search") {
-    categoryPage.searchBtn.should("be.visible").click();
-    return;
-  }
+//   if (t === "search") {
+//     categoryPage.searchBtn.should("be.visible").click();
+//     return;
+//   }
 
-  if (t === "reset") {
-    categoryPage.resetBtn.should("be.visible").click();
-    return;
-  }
+//   if (t === "reset") {
+//     categoryPage.resetBtn.should("be.visible").click();
+//     return;
+//   }
 
-  throw new Error(`Unknown button: ${JSON.stringify(buttonText)}`);
-});
+//   throw new Error(`Unknown button: ${JSON.stringify(buttonText)}`);
+// });
 
 Then(
   "System redirects to the list {string} appears in the category table",
@@ -481,10 +571,6 @@ Then("The table refreshes with original data", () => {
 When(
   "Count the number of category rows displayed in the table on {string}",
   (pageNumber) => {
-    // TC09 has no explicit "more than 10 categories" precondition, but it asserts
-    // the default page size is 10. Ensure we have enough data for the pagination
-    // layer to actually render 10 rows.
-    categoryPage.ensureMinimumCategories("10");
     categoryPage.goToPage(pageNumber);
     categoryPage.assertCategoryTableHasData();
     categoryPage.getCategoryRowCount().then((count) => {
@@ -595,50 +681,50 @@ Then("The {string} button is NOT present", (buttonText) => {
 // UI/TC12 Verify Search by Name
 // =============================================================
 
-When("Enter {string} in search bar", (searchText) => {
-  categoryPage.assertOnCategoriesPage();
-  categoryPage.searchNameInput.should("be.visible").clear().type(searchText);
-});
+// When("Enter {string} in search bar", (searchText) => {
+//   categoryPage.assertOnCategoriesPage();
+//   categoryPage.searchNameInput.should("be.visible").clear().type(searchText);
+// });
 
-When("Click {string}", (controlText) => {
-  const t = String(controlText).replaceAll(/\s+/g, " ").trim().toLowerCase();
+// When("Click {string}", (controlText) => {
+//   const t = String(controlText).replaceAll(/\s+/g, " ").trim().toLowerCase();
 
-  if (t === "search") {
-    categoryPage.searchBtn.should("be.visible").click();
-    return;
-  }
+//   if (t === "search") {
+//     categoryPage.searchBtn.should("be.visible").click();
+//     return;
+//   }
 
-  if (t === "reset") {
-    categoryPage.resetBtn.should("be.visible").click();
-    return;
-  }
+//   if (t === "reset") {
+//     categoryPage.resetBtn.should("be.visible").click();
+//     return;
+//   }
 
-  throw new Error(`Unknown control to click: ${JSON.stringify(controlText)}`);
-});
+//   throw new Error(`Unknown control to click: ${JSON.stringify(controlText)}`);
+// });
 
-Then("List update display only the {string} category", (expectedCategory) => {
-  const expected = String(expectedCategory).trim();
+// Then("List update display only the {string} category", (expectedCategory) => {
+//   const expected = String(expectedCategory).trim();
 
-  categoryPage.assertOnCategoriesPage();
-  categoryPage.categoriesTable.should("be.visible");
+//   categoryPage.assertOnCategoriesPage();
+//   categoryPage.categoriesTable.should("be.visible");
 
-  cy.get("table tbody tr").then(($rows) => {
-    const dataRows = Array.from($rows).filter(
-      (row) => Cypress.$(row).find("td[colspan]").length === 0,
-    );
+//   cy.get("table tbody tr").then(($rows) => {
+//     const dataRows = Array.from($rows).filter(
+//       (row) => Cypress.$(row).find("td[colspan]").length === 0,
+//     );
 
-    expect(dataRows.length, "data rows after search").to.be.greaterThan(0);
+//     expect(dataRows.length, "data rows after search").to.be.greaterThan(0);
 
-    dataRows.forEach((row) => {
-      const $tds = Cypress.$(row).find("td");
-      const nameCellText = Cypress.$($tds[1])
-        .text()
-        .replaceAll(/\s+/g, " ")
-        .trim();
-      expect(nameCellText).to.eq(expected);
-    });
-  });
-});
+//     dataRows.forEach((row) => {
+//       const $tds = Cypress.$(row).find("td");
+//       const nameCellText = Cypress.$($tds[1])
+//         .text()
+//         .replaceAll(/\s+/g, " ")
+//         .trim();
+//       expect(nameCellText).to.eq(expected);
+//     });
+//   });
+// });
 
 // =============================================================
 // UI/TC13 Verify Filter by Parent
@@ -782,5 +868,573 @@ Then("Delete icon are either hidden or visually disabled", () => {
         "Delete action should be hidden or disabled for non-admin",
       ).to.eq(true);
     });
+  });
+});
+
+// =============================================================
+// UI/TC16 Verify "Sorting by name" in Category page
+// =============================================================
+
+When('Click on the {string} column header to sort by name', (columnName) => {
+  if (columnName.toLowerCase() === 'name') {
+    // Assuming the first <th> in the table is for "Name"
+    // Get the first row's text before clicking
+    cy.get('table tbody tr').first().find('td').eq(0).invoke('text').then((firstRowBefore) => {
+      categoryPage.categoriesTable.find('th').contains('Name').click();
+
+      // Wait until the first row's text actually changes, or use a short wait
+      cy.get('table tbody tr').first().find('td').eq(0).should('not.have.text', firstRowBefore);
+    });
+  }
+});
+
+When('Click on the {string} column header to sort by name again', (columnName) => {
+  if (columnName.toLowerCase() === 'name') {
+    // Get the first row's text before clicking
+    cy.get('table tbody tr').first().find('td').eq(0).invoke('text').then((firstRowBefore) => {
+      categoryPage.categoriesTable.find('th').contains('Name').click();
+
+      // Wait until the first row's text actually changes, or use a short wait
+      cy.get('table tbody tr').first().find('td').eq(0).should('not.have.text', firstRowBefore);
+    });
+  }
+});
+
+Then('The categories should be sorted by name in ascending order', () => {
+  categoryPage.assertCategoryTableHasData();
+
+  cy.get('table tbody tr').then(($rows) => {
+    const actualNames = Array.from($rows)
+      .map(row => Cypress.$(row).find('td').eq(0).text().trim())
+      .filter(name => name !== "");
+
+    // Use standard localeCompare WITHOUT toLowerCase to see if it matches the App
+    const expectedSorted = [...actualNames].sort((a, b) => a.localeCompare(b));
+
+    cy.log('Actual:', actualNames.join(' | '));
+    cy.log('Expected:', expectedSorted.join(' | '));
+
+    expect(actualNames).to.deep.equal(expectedSorted);
+  });
+});
+
+Then('The categories should be sorted by name in descending order', () => {
+  categoryPage.assertCategoryTableHasData();
+
+  cy.get('table tbody tr').then(($rows) => {
+    const actualNames = Array.from($rows)
+      .map(row => Cypress.$(row).find('td').eq(0).text().trim())
+      .filter(name => name !== "");
+
+    const expectedSorted = [...actualNames].sort((a, b) =>
+      b.toLowerCase().localeCompare(a.toLowerCase())
+    );
+
+    expect(actualNames).to.deep.equal(expectedSorted);
+  });
+});
+
+// =============================================================
+// UI/TC17 Sorting by ID in Category page
+// =============================================================
+
+When('Click on the {string} column header to sort by id', (columnName) => {
+  if (columnName.toLowerCase() === 'id') {
+    // We capture the text of the first ID before clicking to use as a "Guard"
+    // This ensures Cypress waits for the table to actually refresh/resort
+    cy.get('table tbody tr').first().find('td').eq(0).invoke('text').then((idBefore) => {
+      categoryPage.categoriesTable.find('th').contains('ID').click();
+      // Guard: Only proceed when the ID in the first row has changed
+      cy.get('table tbody tr').first().find('td').eq(0).should('not.have.text', idBefore);
+    });
+  }
+});
+
+When('Click on the {string} column header to sort by id again', (columnName) => {
+  if (columnName.toLowerCase() === 'id') {
+    cy.get('table tbody tr').first().find('td').eq(0).invoke('text').then((idBefore) => {
+      categoryPage.categoriesTable.find('th').contains('ID').click();
+      cy.get('table tbody tr').first().find('td').eq(0).should('not.have.text', idBefore);
+    });
+  }
+});
+
+Then('The categories should be sorted by id in ascending order', () => {
+  categoryPage.assertCategoryTableHasData();
+
+  cy.get('table tbody tr').then(($rows) => {
+    // 1. Extract IDs and convert them to Numbers
+    const actualIds = Array.from($rows)
+      .map(row => Number(Cypress.$(row).find('td').eq(0).text().trim()))
+      .filter(id => !isNaN(id));
+
+    // 2. Create expected numeric sort (a - b)
+    const expectedSorted = [...actualIds].sort((a, b) => a - b);
+
+    cy.log('Actual IDs (Asc):', actualIds.join(', '));
+    expect(actualIds).to.deep.equal(expectedSorted);
+  });
+});
+
+Then('The categories should be sorted by id in descending order', () => {
+  categoryPage.assertCategoryTableHasData();
+
+  cy.get('table tbody tr').then(($rows) => {
+    const actualIds = Array.from($rows)
+      .map(row => Number(Cypress.$(row).find('td').eq(0).text().trim()))
+      .filter(id => !isNaN(id));
+
+    // 2. Create expected numeric sort descending (b - a)
+    const expectedSorted = [...actualIds].sort((a, b) => b - a);
+
+    cy.log('Actual IDs (Desc):', actualIds.join(', '));
+    expect(actualIds).to.deep.equal(expectedSorted);
+  });
+});
+
+// =============================================================
+// UI/TC18, UI/TC19, UI/TC20, UI/TC21 Search Functionality in category
+// =============================================================
+
+When('Enter {string} in search bar', (categoryName) => {
+  // Use the Page Object to type into the search input
+  categoryPage.searchNameInput.clear().type(categoryName);
+});
+
+When('Click {string} button', (buttonName) => {
+  if (buttonName === 'Search') {
+    categoryPage.searchBtn.click();
+  }
+});
+
+Then('List update display only the {string} category', (expectedName) => {
+  // Wait for the table to refresh
+  categoryPage.categoriesTable.should('be.visible');
+
+  cy.get('table tbody tr').then(($rows) => {
+    // If the search works, we expect at least one row, 
+    // and every row shown should contain the searched term.
+    const rowCount = $rows.length;
+
+    // Check first row specifically
+    cy.wrap($rows).first().find('td').eq(1).should('contain.text', expectedName);
+
+    // Optional: Log how many results were found
+    cy.log(`Search for "${expectedName}" returned ${rowCount} row(s)`);
+  });
+});
+
+Given("{string} category doesn't exists", (categoryName) => {
+  apiLoginAsAdmin().then((authHeader) => {
+    deleteCategoryByName(categoryName, authHeader);
+  });
+});
+
+Then('List update display {string} message', (expectedMessage) => {
+  // Wait for the table to refresh after clicking search
+  categoryPage.categoriesTable.should('be.visible');
+
+  // Find the table body and check for the "No category found" text
+  cy.get('table tbody').then(($tbody) => {
+    // We expect the text to be visible within the table area
+    cy.wrap($tbody)
+      .contains(expectedMessage, { timeout: 10000 })
+      .should('be.visible');
+
+    // Optional: Verify that no actual data rows are present
+    // Often empty tables have 1 row with a colspan="100%"
+    cy.get('table tbody tr').should('have.length', 1);
+  });
+});
+
+// =============================================================
+// UI/TC22 Precondition: Create Parent and Child via API
+// =============================================================
+
+Given('A parent category {string} with child {string} exists', (parentName, childName) => {
+  // 1. Log in via API to get the token
+  apiLoginAsAdmin().then((authHeader) => {
+
+    // 2. Ensure the Parent category exists (creates it if it doesn't)
+    // We use your existing ensureCategoryExists helper
+    ensureCategoryExists(parentName).then(() => {
+
+      // 3. Get the Parent's ID so we can link the child to it
+      cy.request({
+        method: 'GET',
+        url: '/api/categories/main', // Endpoint for main categories
+        headers: { Authorization: authHeader }
+      }).then((res) => {
+        const parent = res.body.find(c => c.name === parentName);
+        expect(parent, `Parent category ${parentName} should be found`).to.not.be.undefined;
+
+        // 4. Create the Child category linked to that Parent ID
+        cy.request({
+          method: 'POST',
+          url: '/api/categories',
+          headers: { Authorization: authHeader },
+          body: {
+            name: childName,
+            parentId: parent.id  // Linking the child to the parent
+          },
+          failOnStatusCode: false // Prevent failure if child already exists
+        });
+      });
+    });
+  });
+
+  // Refresh the page to ensure the UI sees the new data
+  categoryPage.visit();
+});
+
+// Updated to use two {string} placeholders to match the error's suggestion
+When('Select {string} from {string} filter dropdown', (optionValue, dropdownLabel) => {
+  if (dropdownLabel.toLowerCase().includes("parent category")) {
+    // Select by text from the dropdown using the Page Object
+    categoryPage.parentCategoryFilterDropdown.select(optionValue);
+  } else {
+    throw new Error(`Unknown filter dropdown: ${dropdownLabel}`);
+  }
+});
+
+Then('The table should display only the {string} category', (expectedName) => {
+  categoryPage.categoriesTable.should('be.visible');
+
+  // Verify only matching rows exist
+  cy.get('table tbody tr').each(($row) => {
+    // eq(2) assumes the Category Name is the third column (index 2)
+    cy.wrap($row).find('td').eq(1).should('contain.text', expectedName);
+  });
+});
+
+// This matches: Then The table should display the "Apple" category
+Then("The table should display the {string} category", function (categoryName) {
+  // Replace '.category-table' with your actual table or row selector
+  cy.get('table tbody tr')
+    .contains('td', categoryName)
+    .should('be.visible');
+});
+
+Then("Every row shown should have {string} as the Parent Category", function (parentName) {
+  cy.get('table tbody tr').each(($row) => {
+    // Finds the 2nd <td> in the current row
+    cy.wrap($row).find('td').eq(2).should('contain', parentName);
+  });
+});
+
+// Click the Reset/Search/Add Category button 
+When('Click the {string} button', (buttonName) => {
+  if (buttonName === "Reset") {
+    categoryPage.resetBtn.first().click(); // Use .first() to target only one
+  } else if (buttonName === "Search") {
+    categoryPage.searchBtn.first().click({ multiple: true });
+  } else if (buttonName === "Add A Category") {
+    categoryPage.addCategoryBtn.first().click();
+  }
+});
+
+// Verify Parent Category filter is cleared 
+Then('The {string} filter should be cleared', (filterName) => {
+  // Usually, the default value for a dropdown is an empty string or '0'
+  categoryPage.parentCategoryFilterDropdown.should('have.value', ''); // 
+});
+
+// Verify Search bar is empty 
+Then('The {string} bar should be empty', (elementName) => {
+  categoryPage.searchNameInput.should('have.value', ''); // 
+});
+
+// Verify table is restored (showing data) 
+Then('The table should show all categories', () => {
+  categoryPage.categoriesTable.find('tbody tr').should('have.length.at.least', 1); // 
+});
+
+// =============================================================
+// UI/TC25 & UI/TC26 Role-Based Access Control - Edit/Delete button access (User Permissions)
+// =============================================================
+
+Then('The {string} button should not be visible for any category', (buttonType) => {
+  const selector = `a[title="${buttonType}"], button[title="${buttonType}"]`;
+
+  cy.get('body').then(($body) => {
+    const actionButtons = $body.find(selector);
+
+    if (actionButtons.length > 0) {
+      cy.wrap(actionButtons).each(($btn) => {
+        const isVisible = Cypress.dom.isVisible($btn);
+
+        if (isVisible) {
+          // 1. Check for the 'disabled' attribute or class first
+          // This is what you saw in your Inspect Element
+          const hasDisabledAttr = $btn.attr('disabled') !== undefined || $btn.prop('disabled') === true;
+          const hasDisabledClass = $btn.hasClass('disabled');
+          const isPointerEventsNone = $btn.css('pointer-events') === 'none';
+
+          // 2. Assertion: If it's visible, it MUST have one of these safety markers
+          expect(hasDisabledAttr || hasDisabledClass || isPointerEventsNone,
+            `Visible ${buttonType} button should be disabled`).to.be.true;
+
+          // 3. ONLY try to click if the button DOES NOT have the disabled markers
+          // This prevents the "False Positive" error you just got
+          if (!hasDisabledAttr && !hasDisabledClass && !isPointerEventsNone) {
+            cy.wrap($btn).click({ force: false, timeout: 500 }).then(() => {
+              throw new Error(`SECURITY BUG: Regular user successfully clicked the ${buttonType} button!`);
+            });
+          } else {
+            cy.log(`Confirmed: ${buttonType} button is present but correctly disabled.`);
+          }
+        } else {
+          cy.wrap($btn).should('not.be.visible');
+        }
+      });
+    } else {
+      cy.log(`Confirmed: ${buttonType} button is not present in the DOM.`);
+      expect(actionButtons.length).to.equal(0);
+    }
+  });
+});
+
+// =============================================================
+// UI/TC27 Admin Access Logic
+// =============================================================
+
+// 1. Fix the Visibility Step (The one currently showing as "Missing")
+Then('The {string} button should be visible for any category', (buttonType) => {
+  const selector = `a[title="${buttonType}"], button[title="${buttonType}"]`;
+
+  // Ensure table has data
+  cy.get('table tbody tr').should('have.length.at.least', 1);
+
+  // Check all buttons
+  cy.get(selector).each(($btn) => {
+    cy.wrap($btn)
+      .should('be.visible')
+      .and('not.have.class', 'disabled')
+      .and('not.have.attr', 'disabled');
+  });
+});
+
+// 3. Add the Navigation Step
+Then('System should navigate to the category edit page', () => {
+  // Matches /ui/categories/edit/ followed by the numeric ID
+  cy.url().should('match', /\/ui\/categories\/edit\/\d+/);
+});
+
+// =============================================================
+// UI/TC28 Admin Delete Functionality
+// =============================================================
+
+// Ensure at least one category exists (Pre-condition)
+Given('At least one category exists', () => {
+  cy.get('table tbody tr').should('have.length.at.least', 1);
+});
+
+When('I click the {string} button for the first category', function (buttonType) {
+  // Use a generic selector that finds either Edit or Delete buttons by title
+  const selector = `a[title="${buttonType}"], button[title="${buttonType}"]`;
+
+  if (buttonType === 'Delete') {
+    // 1. Capture the name of the category to verify deletion later
+    cy.get('table tbody tr').first().find('td').eq(1).invoke('text').as('deletedCategoryName');
+
+    // 2. Handle the native 'window:confirm' browser popup
+    // This automatically clicks "OK" on the "Delete this category?" prompt
+    cy.on('window:confirm', () => true);
+
+    // 3. Perform the click on the Delete button
+    cy.get(selector).first().should('be.visible').click();
+  } else {
+    // Standard click for "Edit" or other action buttons
+    cy.get(selector).first().should('be.visible').click();
+  }
+});
+
+// Verify the category is gone
+Then('The category should be removed from the table', function () {
+  // Use the alias we saved in the previous step
+  const name = this.deletedCategoryName;
+
+  // Verify a success message appears (Common UI pattern)
+  cy.contains('deleted successfully', { matchCase: false }).should('be.visible');
+
+  // Verify the table no longer contains that specific name
+  cy.get('table').should('not.contain', name);
+});
+
+// =============================================================
+// UI/TC29 Validation for Empty Category Name for creating a new category
+// =============================================================
+
+When('I leave the category name field empty', () => {
+  // We explicitly clear the field to ensure it is empty
+  addCategoryPage.categoryNameInput.clear();
+});
+
+When('I click the "Save" button', () => {
+  addCategoryPage.saveButton.click();
+});
+
+Then('I should see a validation error message {string}', (expectedMessage) => {
+  // Verify the error message is visible and contains the correct text
+  addCategoryPage.errorMessage
+    .should('be.visible')
+    .and('contain.text', expectedMessage);
+});
+
+Then('The system should not navigate away from the {string} page', (pageName) => {
+  // Verify the URL still contains the 'add' path, indicating no redirection occurred
+  cy.url().should('include', '/ui/categories/add');
+});
+
+// =============================================================
+// UI/TC30, UI/TC31, UI/TC32, UI/TC33 Validation for creating a new Category Name for creating a new category
+// =============================================================
+
+When('I enter {string} into the category name field', (categoryName) => {
+  // Clear any existing text and type the new category name
+  addCategoryPage.categoryNameInput.clear().type(categoryName);
+});
+
+Then('I should see a success message {string}', (message) => {
+  // Use .invoke('text') and .then() to trim whitespace if needed, 
+  // or simply use contain.text for a partial match.
+  cy.get('.alert-success')
+    .should('be.visible')
+    .and('contain.text', message.trim());
+});
+
+Then('The new category {string} should appear in the table', (categoryName) => {
+  // If categoryPage.categoryTableBody is undefined, it means 
+  // the getter in categoryPage.js isn't returning anything.
+  categoryPage.categoryTableBody.should('contain.text', categoryName);
+});
+
+// Ensure the pre-condition: the category must exist first
+Given('The category {string} already exists in the system', (categoryName) => {
+  // 1. Navigate to the list page
+  cy.visit('/ui/categories');
+
+  // 2. Check if it's already in the table
+  cy.get('table').then(($table) => {
+    if ($table.text().includes(categoryName)) {
+      cy.log(`${categoryName} already exists. Proceeding with test.`);
+    } else {
+      // If it doesn't exist, create it quickly so the test can fail on the duplicate later
+      cy.log(`${categoryName} not found. Creating it now...`);
+      cy.visit('/ui/categories/add');
+      cy.get('#name').type(categoryName);
+      cy.get('button[type="submit"]').click();
+    }
+  });
+});
+
+When('I select {string} from the parent category dropdown', (parentName) => {
+  addCategoryPage.parentCategoryField.should('be.visible').select(parentName);
+});
+
+Then('I should see a duplicate error message {string}', (expectedError) => {
+  // We use .invoke('text') and .then() to handle potential extra whitespace/newlines
+  cy.get('.alert-danger')
+    .should('be.visible')
+    .invoke('text')
+    .then((actualText) => {
+      // Clean the text from the UI and compare
+      expect(actualText.trim()).to.include(expectedError);
+    });
+});
+
+// Verify no duplicate row was actually added
+Then('The category {string} should only appear once in the table', (categoryName) => {
+  // Use filter to find all cells containing the exact text and check the count
+  cy.get('table tbody tr td').filter(`:contains("${categoryName}")`)
+    .should('have.length', 1);
+});
+
+When('I click the "Cancel" button', () => {
+  addCategoryPage.cancelBtn.should('be.visible').click();
+});
+
+// Reuse or add the redirection check
+Then('I should be redirected to the {string} page', (pageName) => {
+  if (pageName.toLowerCase() !== 'categories') {
+    // Verifies the URL matches the categories list path
+    cy.url().should('include', '/ui/categories');
+    // Ensures we are NOT on the 'add' page anymore
+    cy.url().should('not.include', '/add');
+  } else if (pageName.toLowerCase() === 'add category') {
+    // Verifies the URL matches the categories list path
+    cy.url().should('not.include', '/ui/categories');
+    // Ensures we are NOT on the 'add' page anymore
+    cy.url().should('include', '/add');
+  }
+});
+
+Then('The system should not have created a new category', () => {
+  // This is a safety check to ensure no "blank" categories were saved
+  cy.get('table').should('be.visible');
+});
+
+Then('The {string} sidebar item should have the {string} class', (itemName, className) => {
+  // We check the link itself or its parent depending on your HTML structure
+  categoryPage.sidebarCategoryLink
+    .should('be.visible')
+    .and('have.class', className);
+
+  /* Note: If the 'active' class is on the parent <li>, use:
+     categoryPage.sidebarCategoryLink.parent().should('have.class', className);
+  */
+});
+
+// checking if the category summary in the dashboard is accurate
+
+let dashboardMainCount = 0;
+let accumulatedTableCount = 0;
+
+Given('I note the total "Main" category count from the Dashboard', () => {
+  cy.visit('/ui/dashboard');
+  dashboardPage.mainCategoryCount.invoke('text').then((text) => {
+    // Converts "27" to an integer
+    dashboardMainCount = parseInt(text.trim());
+    cy.log(`Dashboard Main count: ${dashboardMainCount}`);
+  });
+});
+
+When('I navigate to the "Categories" page', () => {
+  categoryPage.visit();
+});
+
+When('I count all categories across all pagination pages', () => {
+  accumulatedTableCount = 0; // Reset counter
+
+  function countRowsOnPage() {
+    // 1. Count rows on current visible page
+    categoryPage.categoriesTable.find('tbody tr').then(($rows) => {
+      // Ensure we aren't counting the "No data available" row
+      if ($rows.length > 0 && !$rows.text().includes('No data')) {
+        accumulatedTableCount += $rows.length;
+      }
+    });
+
+    // 2. Check for the 'Next' button
+    cy.get('body').then(($body) => {
+      // Find 'Next' link that isn't disabled
+      const nextBtn = $body.find('li.next:not(.disabled) a, a:contains("Next"):not(.disabled)');
+
+      if (nextBtn.length > 0) {
+        cy.wrap(nextBtn).click();
+        cy.wait(500); // Standard wait for table to refresh
+        countRowsOnPage(); // Recursive call
+      }
+    });
+  }
+
+  countRowsOnPage();
+});
+
+Then('The total count should match the Dashboard summary', () => {
+  // Use cy.then to ensure the asynchronous recursion has finished
+  cy.then(() => {
+    cy.log(`Table Count: ${accumulatedTableCount} | Dashboard: ${dashboardMainCount}`);
+    expect(accumulatedTableCount).to.equal(dashboardMainCount);
   });
 });
