@@ -150,8 +150,8 @@ Feature: Category Management Module
     And Response message indicates that the method or path is invalid
 
   @API/TC32
-  Scenario: API/TC32 Verify Regular User cannot update a category
-    Given User has valid JWT token
+  Scenario: API/TC32 Verify Regular User can update a category with valid ID and Request Body
+    Given Admin or User has valid JWT token
     And Category with ID "3" exists
     When I send a PUT request to "/api/categories/3" with body:
       """
@@ -163,4 +163,132 @@ Feature: Category Management Module
       }
       """
     Then Status Code: 403 Forbidden
-    And Response message indicates authentication failure
+
+  @API/TC33
+  Scenario: API/TC33 Verify Regular User can update a category with valid ID and Request Body but empty name
+    Given Admin or User has valid JWT token
+    And Category with ID "3" exists
+    When I send a PUT request to "/api/categories/3" with body:
+      """
+      {
+        "name": "",
+        "parent": {
+          "id": 4
+        }
+      }
+      """
+    Then Status Code: 403 Forbidden
+
+  @API/TC34
+  Scenario: API/TC34 Verify Admin User can update a category without valid ID and Request Body
+    Given Admin has valid JWT token
+    When I send a PUT request to "/api/categories/" with body:
+      """
+      {
+        "name": "flowers04",
+        "parent": {
+          "id": 4
+        }
+      }
+      """
+    Then Status Code: 405 Method Not Allowed
+    And Response message indicates that the method or path is invalid
+
+  @API/TC35
+  Scenario: API/TC35 Verify Admin User can update a category with a valid ID and Request Body
+    Given Admin has valid JWT token
+    When I send a PUT request to "/api/categories/3" with body:
+      """
+      {
+        "name": "flowers04",
+        "parent": {
+          "id": 4
+        }
+      }
+      """
+    Then Status Code: 200 OK
+    And Response contains the updated name "flowers04"
+
+  @API/TC36
+  Scenario: API/TC36 Verify Admin User cannot update a category with invalid special characters in name
+    Given Admin has valid JWT token
+    When I send a PUT request to "/api/categories/3" with body:
+      """
+      {
+        "name": "!@#$",
+        "parent": {
+          "id": 4
+        }
+      }
+      """
+    Then Status Code: 200 OK
+    And Response contains the updated name "!@#$"
+
+  @API/TC37
+  Scenario: API/TC37 Verify Admin User cannot update a category with a different number format in the parent ID
+    Given Admin has valid JWT token
+    When I send a PUT request to "/api/categories/3" with body:
+      """
+      {
+        "name": "flower01",
+        "parent": {
+          "id": "01"
+        }
+      }
+      """
+    Then Status Code: 200 OK
+    And Response contains the updated name "flower01"
+
+  @API/TC38
+  Scenario: API/TC38 Verify Admin User cannot update a category with name too short (2 characters)
+    Given Admin has valid JWT token
+    When I send a PUT request to "/api/categories/3" with body:
+      """
+      {
+        "name": "ab",
+        "parent": {
+          "id": 1
+        }
+      }
+      """
+    Then Status Code: 500 Internal Server Error
+    And Response message indicates "Could not commit JPA transaction"
+
+  @API/TC39
+  Scenario: API/TC39 Verify Admin User cannot update a category with name (2 characters) + a space
+    Given Admin has valid JWT token
+    When I send a PUT request to "/api/categories/3" with body:
+      """
+      {
+        "name": "ab ",
+        "parent": {
+          "id": 1
+        }
+      }
+      """
+    Then Status Code: 200 OK
+    And Response contains the updated name "ab "
+
+  @API/TC40
+  Scenario: API/TC40 Verify Admin User cannot update a category with name 3 spaces
+    Given Admin has valid JWT token
+    When I send a PUT request to "/api/categories/3" with body:
+      """
+      {
+        "name": "   ",
+        "parent": {
+          "id": 1
+        }
+      }
+      """
+    Then Status Code: 500 Internal Server Error
+    And Response message indicates "Could not commit JPA transaction"
+
+  @API/TC41
+  Scenario: API/TC41 Verify admin can delete category information of a main category
+    Given Admin has valid JWT token
+    And a category with id "1" exists in the system
+    When I send a DELETE request to "/api/categories/1"
+    Then the response status code should be 204
+    And the category should be successfully deleted
+
