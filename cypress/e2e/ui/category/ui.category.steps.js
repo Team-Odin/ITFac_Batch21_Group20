@@ -1655,9 +1655,20 @@ Then(
 // =============================================================
 
 When("I enter {string} into the category name field", (categoryName) => {
-  // Clear any existing text and type the new category name
-  lastEnteredCategoryName = categoryName;
-  addCategoryPage.categoryNameInput.clear().type(categoryName);
+  // Clear any existing text and type the new category name.
+  // TC31 uses a 2-letters + space value; keep it unique to avoid duplicate-category errors.
+  let effectiveName = String(categoryName ?? "");
+
+  if (/^[A-Za-z]{2}\s$/.test(effectiveName)) {
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const randomTwo =
+      alphabet[Math.floor(Math.random() * alphabet.length)] +
+      alphabet[Math.floor(Math.random() * alphabet.length)];
+    effectiveName = `${randomTwo} `;
+  }
+
+  lastEnteredCategoryName = effectiveName;
+  addCategoryPage.categoryNameInput.clear().type(effectiveName);
 });
 
 Then("I should see a success message {string}", (message) => {
@@ -1848,53 +1859,83 @@ When('I navigate to the "Categories" page', () => {
   categoryPage.visit();
 });
 
-When('I count all categories across all pagination pages', () => {
+When("I count all categories across all pagination pages", () => {
   accumulatedTableCount = 0;
 
-  const countCurrentPage = () => {
-    // Count table rows
-    categoryPage.categoriesTable.find('tbody tr').then(($rows) => {
-      if ($rows.length > 0 && !$rows.text().includes('No data')) {
-        accumulatedTableCount += $rows.length;
-      }
+  let parentColumnIndex;
+
+  const resolveParentColumnIndex = () => {
+    if (typeof parentColumnIndex === "number")
+      return cy.wrap(parentColumnIndex);
+
+    return categoryPage.categoriesTable.find("thead th").then(($ths) => {
+      const headers = Array.from($ths).map((th) =>
+        String(th.innerText || "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .toLowerCase(),
+      );
+      const idx = headers.findIndex((h) => h.includes("parent"));
+      parentColumnIndex = idx >= 0 ? idx : 2;
+      return parentColumnIndex;
+    });
+  };
+
+  const countCurrentPageMainOnly = () => {
+    return resolveParentColumnIndex().then((idx) => {
+      return categoryPage.categoriesTable.find("tbody tr").then(($rows) => {
+        const rows = Array.from($rows).filter((r) => {
+          const tds = r.querySelectorAll("td");
+          if (!tds || tds.length === 0) return false;
+          if (tds.length === 1 && tds[0].getAttribute("colspan")) return false;
+          const rowText = String(r.innerText || "").toLowerCase();
+          if (rowText.includes("no data") || rowText.includes("no category"))
+            return false;
+          const parentText = String(tds[idx]?.innerText || "")
+            .replace(/\s+/g, " ")
+            .trim();
+          return parentText === "-" || parentText === "";
+        });
+
+        accumulatedTableCount += rows.length;
+      });
     });
   };
 
   const goToNextPageIfPossible = () => {
-    cy.get('body').then(($body) => {
-      // Find NEXT button
-      const nextBtn = $body.find('a.page-link:contains("Next")');
+    return cy.get("body").then(($body) => {
+      const nextBtn = $body
+        .find('a.page-link:contains("Next"), a:contains("Next")')
+        .first();
 
-      // Check if disabled (pointer-events: none OR disabled class)
       const isDisabled =
         nextBtn.length === 0 ||
-        nextBtn.hasClass('disabled') ||
-        nextBtn.closest('li').hasClass('disabled') ||
-        nextBtn.css('pointer-events') === 'none';
+        nextBtn.hasClass("disabled") ||
+        nextBtn.closest("li").hasClass("disabled") ||
+        nextBtn.css("pointer-events") === "none" ||
+        nextBtn.attr("aria-disabled") === "true";
 
       if (isDisabled) {
-        cy.log('Reached last pagination page');
+        cy.log("Reached last pagination page");
         return;
       }
 
-      cy.wrap(nextBtn)
-        .should('be.visible')
-        .click();
-
-      cy.wait(500);
-
-      countCurrentPage();
-      goToNextPageIfPossible(); // recursion
+      return cy
+        .wrap(nextBtn)
+        .should("be.visible")
+        .click()
+        .then(() => {
+          cy.wait(250);
+          return countCurrentPageMainOnly();
+        })
+        .then(goToNextPageIfPossible);
     });
   };
 
-  // Start process
-  countCurrentPage();
-  goToNextPageIfPossible();
+  return countCurrentPageMainOnly().then(goToNextPageIfPossible);
 });
 
-
-Then('The total count should match the Dashboard summary', () => {
+Then("The total count should match the Dashboard summary", () => {
   // Use cy.then to ensure the asynchronous recursion has finished
   cy.then(() => {
     cy.log(

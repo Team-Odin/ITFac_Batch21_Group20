@@ -1,5 +1,10 @@
 import { Given, When, Then } from "@badeball/cypress-cucumber-preprocessor";
 import { plantPage } from "../../../support/pages/plantPage";
+import { loginAsAdmin } from "../../preconditions/login.preconditions";
+
+Given("I am logged in as Admin", () => {
+  loginAsAdmin();
+});
 
 Given("I am on the Dashboard page", () => {
   // Login precondition already asserts we land on /dashboard
