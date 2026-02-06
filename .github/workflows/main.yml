@@ -2,7 +2,7 @@ name: Cypress Tests & Allure Report
 
 on:
   push:
-    branches: [main, master, manoj]
+    branches: [main, master]
   pull_request:
     branches: [main, master]
 
