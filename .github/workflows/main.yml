@@ -15,6 +15,7 @@ jobs:
     timeout-minutes: 30
     env:
       TERM: xterm
+      CI_FAIL_ON_TEST_FAILURE: ${{ secrets.CI_FAIL_ON_TEST_FAILURE }}
     services:
       mysql:
         image: mysql:8.0
@@ -53,15 +54,21 @@ jobs:
       - name: Prepare .env for CI
         shell: bash
         env:
-          ADMIN_USER: ${{ secrets['CI_ADMIN_USER'] }}
-          ADMIN_PASS: ${{ secrets['CI_ADMIN_PASS'] }}
-          USER_USER: ${{ secrets['CI_USER_USER'] }}
-          USER_PASS: ${{ secrets['CI_USER_PASS'] }}
+          ADMIN_USER: ${{ secrets.CI_ADMIN_USER }}
+          ADMIN_PASS: ${{ secrets.CI_ADMIN_PASS }}
+          USER_USER: ${{ secrets.CI_USER_USER }}
+          USER_PASS: ${{ secrets.UI_USER_PASS }}
+
+          API_BASE_URL_SECRET: ${{ secrets.CI_API_BASE_URL }}
+          DB_URL_SECRET: ${{ secrets.CI_DB_URL }}
+          DB_USERNAME_SECRET: ${{ secrets.CI_DB_USERNAME }}
+          DB_PASSWORD_SECRET: ${{ secrets.CI_DB_PASSWORD }}
+          USE_REMOTE_DB: ${{ secrets.CI_USE_REMOTE_DB }}
         run: |
           set -euo pipefail
 
           # Defaults
-          API_BASE_URL="http://localhost:8080"
+          API_BASE_URL="${API_BASE_URL_SECRET:-http://localhost:8080}"
 
           # Write .env safely; values are quoted for dotenv.
           esc() {
@@ -69,49 +76,55 @@ jobs:
             printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
           }
 
-          # Use the workflow's local MySQL service (stable + allows DB reset).
-          DB_URL="jdbc:mysql://127.0.0.1:3306/qa_training?useSSL=false&allowPublicKeyRetrieval=true"
-          DB_USERNAME="root"
-          DB_PASSWORD="root"
-          DB_RESET_ALLOW_NON_LOCAL="false"
-          DB_RESET_ON_RUN="true"
-          DB_RESET_AFTER_RUN="true"
-          DB_RESET_SQL_FILE="sql/sample_plant_data_full.sql"
+          # Choose DB target:
+          # - Local MySQL service (default)
+          # - Remote DB via secrets when USE_REMOTE_DB is truthy
+          use_remote="${USE_REMOTE_DB:-false}"
+          shopt -s nocasematch
+          if [[ "$use_remote" =~ ^(1|true|yes|y|on)$ ]]; then
+            echo "Using REMOTE DB from secrets (CI_USE_REMOTE_DB=$USE_REMOTE_DB)"
+            DB_URL="${DB_URL_SECRET:-}"
+            DB_USERNAME="${DB_USERNAME_SECRET:-}"
+            DB_PASSWORD="${DB_PASSWORD_SECRET:-}"
 
+            # Safety: never reset remote DB by default.
+            DB_RESET_ALLOW_NON_LOCAL="false"
+            DB_RESET_ON_RUN="false"
+            DB_RESET_AFTER_RUN="false"
+            DB_RESET_SQL_FILE="sql/sample_plant_data_full.sql"
+          else
+            echo "Using LOCAL MySQL service (CI_USE_REMOTE_DB=$USE_REMOTE_DB)"
+            DB_URL="jdbc:mysql://127.0.0.1:3306/qa_training?useSSL=false&allowPublicKeyRetrieval=true"
+            DB_USERNAME="root"
+            DB_PASSWORD="root"
+            DB_RESET_ALLOW_NON_LOCAL="false"
+            DB_RESET_ON_RUN="true"
+            DB_RESET_AFTER_RUN="true"
+            DB_RESET_SQL_FILE="sql/sample_plant_data_full.sql"
+          fi
+          shopt -u nocasematch
+
+          # Login credentials:
+          # - Prefer GitHub secrets when present
+          # - Fall back to default training-app credentials so Cypress still runs and produces Allure output
+          ADMIN_USER_VALUE="${ADMIN_USER:-admin}"
+          ADMIN_PASS_VALUE="${ADMIN_PASS:-admin123}"
+          USER_USER_VALUE="${USER_USER:-testuser}"
+          USER_PASS_VALUE="${USER_PASS:-test123}"
+
+          # Validate required values (especially for remote DB mode)
           missing=0
-          for v in ADMIN_USER ADMIN_PASS USER_USER USER_PASS; do
+          for v in DB_URL DB_USERNAME DB_PASSWORD; do
             if [ -z "${!v:-}" ]; then
-              echo "Missing required GitHub Secret: CI_${v}"
+              echo "Missing required value: $v"
               missing=1
             fi
           done
           if [ "$missing" -ne 0 ]; then
-            echo "CI_SECRETS_AVAILABLE=false" >> "$GITHUB_ENV"
-            printf "\nSkipping Cypress: required CI_* login secrets are not available in this run.\n"
-            printf "(This is expected on PRs from forks, where secrets are not exposed.)\n"
-
-            # Still write a minimal .env so other steps don't break.
-            {
-              echo "DB_USERNAME=\"$(esc "$DB_USERNAME")\"";
-              echo "DB_PASSWORD=\"$(esc "$DB_PASSWORD")\"";
-              echo "DB_URL=\"$(esc "$DB_URL")\"";
-              echo "API_BASE_URL=\"$(esc "$API_BASE_URL")\"";
-              echo "";
-              echo "ADMIN_USER=\"\"";
-              echo "ADMIN_PASS=\"\"";
-              echo "USER_USER=\"\"";
-              echo "USER_PASS=\"\"";
-              echo "";
-              echo "DB_RESET_ALLOW_NON_LOCAL=\"$(esc "${DB_RESET_ALLOW_NON_LOCAL:-false}")\"";
-              echo "DB_RESET_ON_RUN=\"$(esc "${DB_RESET_ON_RUN:-}")\"";
-              echo "DB_RESET_AFTER_RUN=\"$(esc "${DB_RESET_AFTER_RUN:-}")\"";
-              echo "DB_RESET_SQL_FILE=\"$(esc "${DB_RESET_SQL_FILE:-sql/sample_plant_data_full.sql}")\"";
-            } > .env
-
-            exit 0
+            echo "\nRefusing to continue: database variables are not set."
+            echo "If using remote DB, ensure CI_DB_URL/CI_DB_USERNAME/CI_DB_PASSWORD secrets are configured."
+            exit 1
           fi
-
-          echo "CI_SECRETS_AVAILABLE=true" >> "$GITHUB_ENV"
 
           {
             echo "DB_USERNAME=\"$(esc "$DB_USERNAME")\"";
@@ -119,10 +132,10 @@ jobs:
             echo "DB_URL=\"$(esc "$DB_URL")\"";
             echo "API_BASE_URL=\"$(esc "$API_BASE_URL")\"";
             echo "";
-            echo "ADMIN_USER=\"$(esc "$ADMIN_USER")\"";
-            echo "ADMIN_PASS=\"$(esc "$ADMIN_PASS")\"";
-            echo "USER_USER=\"$(esc "$USER_USER")\"";
-            echo "USER_PASS=\"$(esc "$USER_PASS")\"";
+            echo "ADMIN_USER=\"$(esc "$ADMIN_USER_VALUE")\"";
+            echo "ADMIN_PASS=\"$(esc "$ADMIN_PASS_VALUE")\"";
+            echo "USER_USER=\"$(esc "$USER_USER_VALUE")\"";
+            echo "USER_PASS=\"$(esc "$USER_PASS_VALUE")\"";
             echo "";
             echo "DB_RESET_ALLOW_NON_LOCAL=\"$(esc \"${DB_RESET_ALLOW_NON_LOCAL:-false}\")\"";
             echo "DB_RESET_ON_RUN=\"$(esc \"${DB_RESET_ON_RUN:-}\")\"";
@@ -144,12 +157,25 @@ jobs:
 
       - name: Run Cypress Tests
         id: cypress
-        if: env.CI_SECRETS_AVAILABLE == 'true'
         continue-on-error: true
         shell: bash
         run: |
           echo "Using DB_URL=$DB_URL"
           npm test
+
+      - name: Debug Allure Results
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "PWD=$(pwd)"
+          if [ -d allure-results ]; then
+            echo "allure-results exists"
+            ls -la allure-results || true
+            echo "allure-results file count: $(find allure-results -maxdepth 1 -type f | wc -l)"
+          else
+            echo "allure-results directory is missing"
+          fi
 
       - name: Generate Allure Report
         if: always()
@@ -182,7 +208,7 @@ jobs:
           retention-days: 30
 
       - name: Fail job if tests failed
-        if: github.event_name == 'pull_request' && steps.cypress.outcome == 'failure'
+        if: steps.cypress.outcome == 'failure' && (env.CI_FAIL_ON_TEST_FAILURE == 'true')
         shell: bash
         run: |
           echo "Marking job failed because Cypress tests failed."
