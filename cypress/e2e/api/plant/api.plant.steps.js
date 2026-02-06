@@ -1,7 +1,29 @@
-import { Given, When, Then } from "@badeball/cypress-cucumber-preprocessor";
+import {
+  Given,
+  When,
+  Then,
+  After,
+} from "@badeball/cypress-cucumber-preprocessor";
 import { categoryPage } from "../../../support/pages/categoryPage";
 
 let authHeader;
+
+// =============================================================
+// Helpers (shared)
+// =============================================================
+
+const safeStringify = (value) => {
+  try {
+    const json = JSON.stringify(value);
+    return typeof json === "string" ? json : String(value);
+  } catch {
+    try {
+      return String(value);
+    } catch {
+      return "[unserializable]";
+    }
+  }
+};
 
 const normalizeEndpoint = (rawEndpoint) => {
   const raw =
@@ -10,6 +32,138 @@ const normalizeEndpoint = (rawEndpoint) => {
   if (!trimmed) throw new Error("Endpoint is empty");
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 };
+
+const resolveEndpoint = (rawEndpoint) => {
+  return typeof categoryPage?.constructor?.normalizeEndpoint === "function"
+    ? categoryPage.constructor.normalizeEndpoint(rawEndpoint)
+    : normalizeEndpoint(rawEndpoint);
+};
+
+const getAuthHeaderOrThrow = () => {
+  const header = authHeader || categoryPage?.authHeader;
+  if (!header) {
+    throw new Error("Missing auth header; run JWT token step first");
+  }
+  return header;
+};
+
+const getPageContentArray = (body) => {
+  if (body && Array.isArray(body.content)) return body.content;
+  if (Array.isArray(body)) return body;
+  return [];
+};
+
+const getPlantIdsFromBody = (body) =>
+  getPageContentArray(body)
+    .map((p) => Number(p?.id))
+    .filter((id) => Number.isFinite(id));
+
+const getPlantNamesFromBody = (body) =>
+  getPageContentArray(body)
+    .map((p) => String(p?.name ?? "").trim())
+    .filter(Boolean);
+
+const allNamesContainTerm = (names, term) => {
+  const needle = String(term).toLowerCase();
+  return names.every((n) => String(n).toLowerCase().includes(needle));
+};
+
+const extractCategoryIdsFromPlantRow = (row) => {
+  if (!row || typeof row !== "object") return [];
+
+  const ids = new Set();
+  const addId = (value) => {
+    const id = Number(value);
+    if (Number.isFinite(id)) ids.add(id);
+  };
+
+  // Common DTO patterns
+  if (Object.hasOwn(row, "categoryId")) addId(row.categoryId);
+
+  // Some backends return category as an object, others as a number/string.
+  if (Object.hasOwn(row, "category")) {
+    const cat = row.category;
+    if (cat && typeof cat === "object") {
+      addId(cat.id);
+    } else {
+      addId(cat);
+    }
+  }
+
+  // Collection-style associations
+  if (Array.isArray(row.categories)) {
+    for (const c of row.categories) {
+      if (c && typeof c === "object") addId(c.id);
+      else addId(c);
+    }
+  }
+
+  return [...ids];
+};
+
+const plantRowHasCategoryAssociation = (row, expectedCategoryId) => {
+  const ids = extractCategoryIdsFromPlantRow(row);
+  if (ids.length === 0) return false;
+  return ids.includes(Number(expectedCategoryId));
+};
+
+const extractDirectErrorMessages = (body) => {
+  if (!body || typeof body !== "object") return [];
+  const directKeys = ["message", "error", "detail", "title"];
+  return directKeys
+    .map((key) => (Object.hasOwn(body, key) ? body[key] : undefined))
+    .filter((v) => v != null)
+    .map(String);
+};
+
+const extractDetailsErrorMessages = (body) => {
+  if (!body || typeof body !== "object") return [];
+  const details = Object.hasOwn(body, "details") ? body.details : undefined;
+  if (!details || typeof details !== "object") return [];
+  return Object.values(details)
+    .filter((v) => v != null)
+    .map(String);
+};
+
+const collectErrorMessages = (body) => {
+  if (body == null) return [];
+  if (typeof body === "string") return [body];
+
+  return [
+    ...extractDirectErrorMessages(body),
+    ...extractDetailsErrorMessages(body),
+    safeStringify(body),
+  ].filter(Boolean);
+};
+
+const parseJsonDocString = (docString) => {
+  const raw =
+    typeof docString === "string"
+      ? docString.trim()
+      : safeStringify(docString ?? "").trim();
+  if (!raw) throw new Error("Request body docstring is empty");
+
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : safeStringify(error);
+    throw new Error(`Invalid JSON body. ${message}`);
+  }
+};
+
+// -------------------------------------------------------------
+// DB cleanup (best-effort) after every Plant API scenario
+// -------------------------------------------------------------
+After(() => {
+  // Uses SQL reset when allowed (local DB by default).
+  // If DB reset is skipped (e.g., non-local DB without opt-in), scenarios still run.
+  return cy.task("db:reset", null, { log: false });
+});
+
+// =============================================================
+// Shared Preconditions / Auth
+// =============================================================
 
 Given("Admin or User has valid JWT token", () => {
   const userUser = Cypress.env("USER_USER");
@@ -47,16 +201,13 @@ Given("Admin has valid JWT token", () => {
   });
 });
 
-When("Send GET request to: {string}", (rawEndpoint) => {
-  const url =
-    typeof categoryPage?.constructor?.normalizeEndpoint === "function"
-      ? categoryPage.constructor.normalizeEndpoint(rawEndpoint)
-      : normalizeEndpoint(rawEndpoint);
+// =============================================================
+// Shared Request Steps
+// =============================================================
 
-  const header = authHeader || categoryPage?.authHeader;
-  if (!header) {
-    throw new Error("Missing auth header; run JWT token step first");
-  }
+When("Send GET request to: {string}", (rawEndpoint) => {
+  const url = resolveEndpoint(rawEndpoint);
+  const header = getAuthHeaderOrThrow();
 
   return cy
     .request({
@@ -70,44 +221,9 @@ When("Send GET request to: {string}", (rawEndpoint) => {
     });
 });
 
-When("Send PUT request to: {string} with body:", (rawEndpoint, docString) => {
-  const url =
-    typeof categoryPage?.constructor?.normalizeEndpoint === "function"
-      ? categoryPage.constructor.normalizeEndpoint(rawEndpoint)
-      : normalizeEndpoint(rawEndpoint);
-
-  const header = authHeader || categoryPage?.authHeader;
-  if (!header) {
-    throw new Error("Missing auth header; run JWT token step first");
-  }
-
-  const raw =
-    typeof docString === "string"
-      ? docString.trim()
-      : safeStringify(docString ?? "").trim();
-  if (!raw) throw new Error("Request body docstring is empty");
-
-  let body;
-  try {
-    body = JSON.parse(raw);
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : safeStringify(error);
-    throw new Error(`Invalid JSON body. ${message}`);
-  }
-
-  return cy
-    .request({
-      method: "PUT",
-      url,
-      headers: { Authorization: header },
-      body,
-      failOnStatusCode: false,
-    })
-    .then((res) => {
-      return cy.wrap(res, { log: false }).as("lastResponse");
-    });
-});
+// =============================================================
+// Shared Assertions
+// =============================================================
 
 Then("Status Code: {int} OK", (expectedStatus) => {
   return cy.get("@lastResponse").then((res) => {
@@ -147,115 +263,6 @@ Then("Status Code: {int} Not Found", (expectedStatus) => {
   });
 });
 
-const getPageContentArray = (body) => {
-  if (body && Array.isArray(body.content)) return body.content;
-  if (Array.isArray(body)) return body;
-  return [];
-};
-
-const getPlantIdsFromBody = (body) =>
-  getPageContentArray(body)
-    .map((p) => Number(p?.id))
-    .filter((id) => Number.isFinite(id));
-
-const getPlantNamesFromBody = (body) =>
-  getPageContentArray(body)
-    .map((p) => String(p?.name ?? "").trim())
-    .filter(Boolean);
-
-const allNamesContainTerm = (names, term) => {
-  const needle = String(term).toLowerCase();
-  return names.every((n) => String(n).toLowerCase().includes(needle));
-};
-
-const safeStringify = (value) => {
-  try {
-    const json = JSON.stringify(value);
-    return typeof json === "string" ? json : String(value);
-  } catch {
-    try {
-      return String(value);
-    } catch {
-      return "[unserializable]";
-    }
-  }
-};
-
-const extractCategoryIdsFromPlantRow = (row) => {
-  if (!row || typeof row !== "object") return [];
-
-  const ids = [];
-
-  // Common DTO patterns
-  if (Object.hasOwn(row, "categoryId") && row.categoryId != null) {
-    const id = Number(row.categoryId);
-    if (Number.isFinite(id)) ids.push(id);
-  }
-
-  if (
-    row.category &&
-    typeof row.category === "object" &&
-    row.category.id != null
-  ) {
-    const id = Number(row.category.id);
-    if (Number.isFinite(id)) ids.push(id);
-  }
-
-  // Some backends return a direct numeric/string category field
-  if (
-    Object.hasOwn(row, "category") &&
-    (typeof row.category === "number" || typeof row.category === "string")
-  ) {
-    const id = Number(row.category);
-    if (Number.isFinite(id)) ids.push(id);
-  }
-
-  // Collection-style associations
-  if (Array.isArray(row.categories)) {
-    for (const c of row.categories) {
-      const id = c && typeof c === "object" ? Number(c.id) : Number(c);
-      if (Number.isFinite(id)) ids.push(id);
-    }
-  }
-
-  return [...new Set(ids)];
-};
-
-const plantRowHasCategoryAssociation = (row, expectedCategoryId) => {
-  const ids = extractCategoryIdsFromPlantRow(row);
-  if (ids.length === 0) return false;
-  return ids.includes(Number(expectedCategoryId));
-};
-
-const extractDirectErrorMessages = (body) => {
-  if (!body || typeof body !== "object") return [];
-  const directKeys = ["message", "error", "detail", "title"];
-  return directKeys
-    .map((key) => (Object.hasOwn(body, key) ? body[key] : undefined))
-    .filter((v) => v != null)
-    .map(String);
-};
-
-const extractDetailsErrorMessages = (body) => {
-  if (!body || typeof body !== "object") return [];
-  const details = Object.hasOwn(body, "details") ? body.details : undefined;
-  if (!details || typeof details !== "object") return [];
-  return Object.values(details)
-    .filter((v) => v != null)
-    .map(String);
-};
-
-const collectErrorMessages = (body) => {
-  if (body == null) return [];
-  if (typeof body === "string") return [body];
-
-  return [
-    ...extractDirectErrorMessages(body),
-    ...extractDetailsErrorMessages(body),
-    safeStringify(body),
-  ].filter(Boolean);
-};
-
 Then("Plant validation errors include:", (docString) => {
   const raw =
     typeof docString === "string" ? docString : safeStringify(docString ?? "");
@@ -283,13 +290,12 @@ Then("Plant validation errors include:", (docString) => {
   });
 });
 
+// =============================================================
+// API/TC19 + API/TC20 Verify Edit Plant (and validation)
+// =============================================================
+
 Given("Any Plant exists", () => {
-  const header = authHeader || categoryPage?.authHeader;
-  if (!header) {
-    throw new Error(
-      "Missing auth header. Run 'Admin has valid JWT token' or 'Admin or User has valid JWT token' first.",
-    );
-  }
+  const header = getAuthHeaderOrThrow();
 
   return cy
     .request({
@@ -306,7 +312,12 @@ Given("Any Plant exists", () => {
       }
 
       const content = getPageContentArray(res.body);
-      if (!Array.isArray(content) || content.length === 0) {
+      if (!Array.isArray(content)) {
+        throw new TypeError(
+          `Expected plants list response to be an array or page object. Got: ${safeStringify(res.body)}`,
+        );
+      }
+      if (content.length === 0) {
         throw new Error(
           "No plants exist in the system; cannot run edit/validation tests without seed data.",
         );
@@ -314,7 +325,7 @@ Given("Any Plant exists", () => {
 
       const first = content.find((p) => Number.isFinite(Number(p?.id)));
       if (!first) {
-        throw new Error(
+        throw new TypeError(
           `Unable to find a plant with a numeric id in response: ${safeStringify(content[0])}`,
         );
       }
@@ -326,30 +337,13 @@ Given("Any Plant exists", () => {
 });
 
 When("Send PUT request to that Plant with body:", (docString) => {
-  const header = authHeader || categoryPage?.authHeader;
-  if (!header) {
-    throw new Error("Missing auth header; run JWT token step first");
-  }
-
-  const raw =
-    typeof docString === "string"
-      ? docString.trim()
-      : safeStringify(docString ?? "").trim();
-  if (!raw) throw new Error("Request body docstring is empty");
-
-  let patch;
-  try {
-    patch = JSON.parse(raw);
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : safeStringify(error);
-    throw new Error(`Invalid JSON body. ${message}`);
-  }
+  const header = getAuthHeaderOrThrow();
+  const patch = parseJsonDocString(docString);
 
   return cy.get("@activePlant").then((plant) => {
     const id = Number(plant?.id);
     if (!Number.isFinite(id)) {
-      throw new Error(
+      throw new TypeError(
         "Missing active plant id; ensure 'Any Plant exists' ran first.",
       );
     }
@@ -391,15 +385,12 @@ Then(
       );
     }
 
-    const header = authHeader || categoryPage?.authHeader;
-    if (!header) {
-      throw new Error("Missing auth header; run JWT token step first");
-    }
+    const header = getAuthHeaderOrThrow();
 
     return cy.get("@activePlant").then((plant) => {
       const id = Number(plant?.id);
       if (!Number.isFinite(id)) {
-        throw new Error(
+        throw new TypeError(
           "Missing active plant id; ensure 'Any Plant exists' ran first.",
         );
       }
@@ -426,6 +417,10 @@ Then(
   },
 );
 
+// =============================================================
+// API/TC21 Verify Plant Summary Data Retrieval
+// =============================================================
+
 Then("Plant summary response contains totalPlants and lowStockPlants", () => {
   return cy.get("@lastResponse").then((res) => {
     expect(res, "lastResponse should exist").to.exist;
@@ -442,71 +437,9 @@ Then("Plant summary response contains totalPlants and lowStockPlants", () => {
   });
 });
 
-Then(
-  "Plant details retrieved subsequently show price {float} for Plant ID {int}",
-  (expectedPrice, plantId) => {
-    const price = Number(expectedPrice);
-    const id = Number(plantId);
-
-    if (!Number.isFinite(price)) {
-      throw new TypeError(
-        `Invalid expected price '${typeof expectedPrice === "string" ? expectedPrice : safeStringify(expectedPrice)}'`,
-      );
-    }
-    if (!Number.isFinite(id)) {
-      throw new TypeError(
-        `Invalid plant id '${typeof plantId === "string" ? plantId : safeStringify(plantId)}'`,
-      );
-    }
-
-    const header = authHeader || categoryPage?.authHeader;
-    if (!header) {
-      throw new Error("Missing auth header; run JWT token step first");
-    }
-
-    return cy
-      .request({
-        method: "GET",
-        url: `/api/plants/${id}`,
-        headers: { Authorization: header },
-        failOnStatusCode: false,
-      })
-      .then((detail) => {
-        expect(detail.status).to.eq(200);
-
-        const actual = Number(detail?.body?.price);
-        expect(
-          Number.isFinite(actual),
-          `Expected response to have numeric price. Actual: ${safeStringify(detail?.body?.price)}`,
-        ).to.eq(true);
-
-        expect(actual).to.be.closeTo(price, 0.0001);
-      });
-  },
-);
-
-Then(
-  "Plant summary response contains totalPlants {int} and lowStockPlants {int}",
-  (expectedTotalPlants, expectedLowStockPlants) => {
-    const total = Number(expectedTotalPlants);
-    const low = Number(expectedLowStockPlants);
-
-    return cy.get("@lastResponse").then((res) => {
-      expect(res, "lastResponse should exist").to.exist;
-      expect(res.status).to.eq(200);
-      expect(res.body, "response body").to.exist;
-
-      const body = res.body;
-      expect(Object.hasOwn(body, "totalPlants"), "totalPlants key").to.eq(true);
-      expect(Object.hasOwn(body, "lowStockPlants"), "lowStockPlants key").to.eq(
-        true,
-      );
-
-      expect(Number(body.totalPlants)).to.eq(total);
-      expect(Number(body.lowStockPlants)).to.eq(low);
-    });
-  },
-);
+// =============================================================
+// API/TC15 + API/TC16 Verify Search By Name (and no results)
+// =============================================================
 
 Given("Plant named {string} exists", (plantName) => {
   const raw =
@@ -514,12 +447,7 @@ Given("Plant named {string} exists", (plantName) => {
   const name = String(raw).trim();
   if (!name) throw new Error("Plant name is empty");
 
-  const header = authHeader || categoryPage?.authHeader;
-  if (!header) {
-    throw new Error(
-      "Missing auth header. Run 'Admin or User has valid JWT token' first.",
-    );
-  }
+  const header = getAuthHeaderOrThrow();
 
   return cy
     .request({
@@ -551,10 +479,7 @@ When("Search plants by name {string}", (searchTerm) => {
   const term = String(raw).trim();
   if (!term) throw new Error("Search term is empty");
 
-  const header = authHeader || categoryPage?.authHeader;
-  if (!header) {
-    throw new Error("Missing auth header; run JWT token step first");
-  }
+  const header = getAuthHeaderOrThrow();
 
   // Backend implementations vary. Try common query parameter names.
   const queryKeys = ["name", "keyword", "search", "q"];
@@ -652,6 +577,10 @@ Then(
   },
 );
 
+// =============================================================
+// API/TC17 + API/TC18 Verify Filter by Category ID
+// =============================================================
+
 When("Request plants filtered by Category ID {int}", (categoryId) => {
   const id = Number(categoryId);
   if (!Number.isFinite(id)) {
@@ -660,10 +589,7 @@ When("Request plants filtered by Category ID {int}", (categoryId) => {
     );
   }
 
-  const header = authHeader || categoryPage?.authHeader;
-  if (!header) {
-    throw new Error("Missing auth header; run JWT token step first");
-  }
+  const header = getAuthHeaderOrThrow();
 
   // Candidate endpoints based on common backend styles (your test plan mentions both forms).
   const candidates = [
@@ -780,6 +706,10 @@ Then("Error message indicates category not found", () => {
   });
 });
 
+// =============================================================
+// API/TC12 + API/TC13 Verify List Retrieval and Details by ID
+// =============================================================
+
 Given("Plant ID {string} exists", (id) => {
   const plantId = Number(id);
   if (!Number.isFinite(plantId)) {
@@ -788,12 +718,7 @@ Given("Plant ID {string} exists", (id) => {
     );
   }
 
-  const header = authHeader || categoryPage?.authHeader;
-  if (!header) {
-    throw new Error(
-      "Missing auth header. Run 'Admin or User has valid JWT token' first.",
-    );
-  }
+  const header = getAuthHeaderOrThrow();
 
   return cy
     .request({
@@ -854,6 +779,10 @@ Then("Plant response contains correct details for Plant ID {int}", (id) => {
   });
 });
 
+// =============================================================
+// API/TC14 Verify Plant List Pagination
+// =============================================================
+
 When("Plant API request plants page {int} size {int}", (page, size) => {
   const p = Number(page);
   const s = Number(size);
@@ -866,12 +795,7 @@ When("Plant API request plants page {int} size {int}", (page, size) => {
       `Invalid size: ${typeof size === "string" ? size : safeStringify(size)}`,
     );
 
-  const header = authHeader || categoryPage?.authHeader;
-  if (!header) {
-    throw new Error(
-      "Missing auth header. Run 'Admin or User has valid JWT token' first.",
-    );
-  }
+  const header = getAuthHeaderOrThrow();
 
   return cy
     .request({

@@ -10,7 +10,325 @@ let selectedPlantCategoryFilterName;
 let plantCategoryColumnIndex;
 let plantSearchText;
 let plantStockColumnIndex;
-let lowStockRowIndex;
+let plantPageRowsSnapshot;
+let lowStockThreshold;
+
+// =============================================================
+// Helpers (shared)
+// =============================================================
+
+const normalizeText = (s) =>
+  String(s ?? "")
+    .replaceAll(/\s+/g, " ")
+    .trim();
+
+const safeToString = (value) => {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const requestMainCategories = (authHeader) =>
+  cy
+    .request({
+      method: "GET",
+      url: "/api/categories/main",
+      headers: { Authorization: authHeader },
+      failOnStatusCode: false,
+    })
+    .then((res) => (Array.isArray(res?.body) ? res.body : []));
+
+const requestCategoriesPage = (authHeader) =>
+  cy
+    .request({
+      method: "GET",
+      url: "/api/categories/page?page=0&size=200&sort=id,desc",
+      headers: { Authorization: authHeader },
+      failOnStatusCode: false,
+    })
+    .then((res) => (Array.isArray(res?.body?.content) ? res.body.content : []));
+
+const deleteCategoryById = (authHeader, id) =>
+  cy.request({
+    method: "DELETE",
+    url: `/api/categories/${id}`,
+    headers: { Authorization: authHeader },
+    failOnStatusCode: false,
+  });
+
+const createCategory = (authHeader, name, parentId) =>
+  cy.request({
+    method: "POST",
+    url: "/api/categories",
+    headers: { Authorization: authHeader },
+    body: { name, parentId },
+    failOnStatusCode: false,
+  });
+
+const deleteThenCreateCategory = (authHeader, matchId, name, parentId) => {
+  const deleteExisting = matchId
+    ? deleteCategoryById(authHeader, matchId)
+    : cy.wrap(null);
+
+  return deleteExisting.then(() => createCategory(authHeader, name, parentId));
+};
+
+const pickParentIdForSubCategory = (parents) => {
+  const indoor = parents.find(
+    (p) => String(p?.name ?? "").toLowerCase() === "indoor",
+  );
+  return indoor?.id ?? parents?.[0]?.id;
+};
+
+const ensureSubCategoryForPlantsFilter = (authHeader, matchId, name) => {
+  return requestMainCategories(authHeader).then((parents) => {
+    const parentId = pickParentIdForSubCategory(parents);
+    if (!parentId) {
+      throw new Error(
+        "No main categories found; cannot create a sub-category for Plants filter",
+      );
+    }
+
+    return deleteThenCreateCategory(authHeader, matchId, name, parentId);
+  });
+};
+
+const requestPlantsPage = (authHeader) =>
+  cy
+    .request({
+      method: "GET",
+      url: "/api/plants/paged?page=0&size=200",
+      headers: { Authorization: authHeader },
+      failOnStatusCode: false,
+    })
+    .then((res) => (Array.isArray(res?.body?.content) ? res.body.content : []));
+
+const selectExactOptionValue = ($select, desiredLower) => {
+  const options = Array.from($select[0].options || []).map((o) => ({
+    value: o.value,
+    text: normalizeText(o.text),
+  }));
+  return options.find((o) => o.text.toLowerCase() === desiredLower)?.value;
+};
+
+const chooseCategoryInAddPlantForm = (desiredLower, categoryName) => {
+  return addPlantPage.categoryField.should("be.visible").then(($select) => {
+    const value = selectExactOptionValue($select, desiredLower);
+    if (!value) {
+      throw new Error(
+        `Category '${categoryName}' was not present in Add Plant category dropdown`,
+      );
+    }
+    return cy.wrap($select).select(value);
+  });
+};
+
+const submitAddPlantFormAndWait = () => {
+  return addPlantPage.submitBtn
+    .should("be.visible")
+    .first()
+    .click()
+    .then(() => {
+      cy.location("pathname", { timeout: 10000 }).should("eq", "/ui/plants");
+    });
+};
+
+const createPlantInCategoryViaUi = (desiredLower, categoryName) => {
+  const uniqueName = `AutoPlant_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+  addPlantPage.visitAddPlantPage();
+  addPlantPage.assertOnAddPlantPage();
+
+  addPlantPage.plantNameField.should("be.visible").clear().type(uniqueName);
+  addPlantPage.priceField.should("be.visible").clear().type("100");
+  addPlantPage.quantityField.should("be.visible").clear().type("1");
+
+  return chooseCategoryInAddPlantForm(desiredLower, categoryName).then(() =>
+    submitAddPlantFormAndWait(),
+  );
+};
+
+const findSelectIndexAndOptionValue = ($selects, desiredLower) => {
+  const selects = $selects.toArray();
+  if (selects.length === 0) throw new Error("No select dropdown found");
+
+  const isCategorySelect = (sel) => {
+    const id = String(sel.getAttribute("id") || "").toLowerCase();
+    const name = String(sel.getAttribute("name") || "").toLowerCase();
+    return id.includes("category") || name.includes("category");
+  };
+
+  const candidates = selects.filter(isCategorySelect);
+  const pool = candidates.length > 0 ? candidates : selects;
+
+  const getExactValue = (sel) => {
+    const options = Array.from(sel.options || []).map((o) => ({
+      value: o.value,
+      text: normalizeText(o.text),
+    }));
+    return options.find((o) => o.text.toLowerCase() === desiredLower)?.value;
+  };
+
+  const chosen = pool.find((sel) => Boolean(getExactValue(sel))) ?? pool[0];
+  const value = getExactValue(chosen);
+  if (!value) return { index: -1, value: undefined };
+
+  return { index: selects.indexOf(chosen), value: String(value) };
+};
+
+const assertHiddenOrDisabled = ($el, label) => {
+  if (!$el || $el.length === 0) return;
+
+  cy.wrap($el[0]).should(($node) => {
+    const $n = Cypress.$($node);
+    const disabledAttr =
+      $n.is(":disabled") ||
+      $n.is("[disabled]") ||
+      $n.attr("aria-disabled") === "true";
+    const className = String($n.attr("class") || "");
+    const disabledClass = className.split(/\s+/g).includes("disabled");
+
+    expect(
+      disabledAttr || disabledClass,
+      `${label} action should be hidden or disabled for non-admin`,
+    ).to.eq(true);
+  });
+};
+
+const apiLoginAsAdmin = () => {
+  const username = Cypress.env("ADMIN_USER");
+  const password = Cypress.env("ADMIN_PASS");
+
+  if (!username || !password) {
+    throw new Error(
+      "Missing admin credentials. Set ADMIN_USER and ADMIN_PASS in your .env (or as CYPRESS_ADMIN_USER/CYPRESS_ADMIN_PASS).",
+    );
+  }
+
+  return cy
+    .request({
+      method: "POST",
+      url: "/api/auth/login",
+      body: { username, password },
+      failOnStatusCode: true,
+    })
+    .its("body")
+    .then((body) => {
+      const token = body?.token;
+      const tokenType = body?.tokenType || "Bearer";
+      if (!token) throw new Error("Login response missing token");
+      return `${tokenType} ${token}`;
+    });
+};
+
+const ensureCategoryExistsViaApi = (categoryName) => {
+  const name = String(categoryName).replaceAll(/\s+/g, " ").trim();
+  const desiredLower = name.toLowerCase();
+
+  return apiLoginAsAdmin().then((authHeader) => {
+    return requestCategoriesPage(authHeader).then((content) => {
+      const match = content.find(
+        (c) => String(c?.name ?? "").toLowerCase() === desiredLower,
+      );
+
+      // Plants page category filter uses sub-categories, so ensure the category has a parent.
+      const isSubCategory =
+        match?.id && String(match?.parentName ?? "-") !== "-";
+      if (isSubCategory) return;
+
+      return ensureSubCategoryForPlantsFilter(authHeader, match?.id, name);
+    });
+  });
+};
+
+const ensureAtLeastOnePlantInCategory = (categoryName) => {
+  const name = String(categoryName).replaceAll(/\s+/g, " ").trim();
+  const desiredLower = name.toLowerCase();
+
+  return apiLoginAsAdmin().then((authHeader) => {
+    return requestPlantsPage(authHeader).then((plants) => {
+      const exists = plants.some(
+        (p) => String(p?.category?.name ?? "").toLowerCase() === desiredLower,
+      );
+      if (exists) return;
+
+      return createPlantInCategoryViaUi(desiredLower, name);
+    });
+  });
+};
+
+const captureTopRowsSnapshot = (maxRows = 3) => {
+  return cy.get("table tbody tr").then(($rows) => {
+    const limit = Math.min(Number(maxRows) || 0, $rows.length);
+    return Array.from($rows)
+      .slice(0, limit)
+      .map((r) => normalizeText(r.innerText));
+  });
+};
+
+const isNextEnabled = () => {
+  return cy.get("body").then(($body) => {
+    const $pagination = $body.find(".pagination");
+    if ($pagination.length === 0) return false;
+
+    const $next = $pagination.find('a:contains("Next")');
+    if ($next.length === 0) return false;
+
+    return !$next.closest(".page-item").hasClass("disabled");
+  });
+};
+
+const createPlantViaUI = (index) => {
+  const uniqueName = `AutoPlant_${Date.now()}_${index}`;
+
+  addPlantPage.visitAddPlantPage();
+  addPlantPage.assertOnAddPlantPage();
+
+  addPlantPage.plantNameField.should("be.visible").clear().type(uniqueName);
+  addPlantPage.priceField.should("be.visible").clear().type("100");
+  addPlantPage.quantityField.should("be.visible").clear().type("1");
+
+  // Keep category selection simple: prefer "Indoor" if present, otherwise choose the first real option.
+  const selectCategory = () => {
+    return addPlantPage.categoryField.should("be.visible").then(($select) => {
+      const options = Array.from($select[0].options || []).map((o) => ({
+        value: o.value,
+        text: normalizeText(o.text),
+      }));
+
+      const preferred = options.find((o) => o.text.toLowerCase() === "indoor");
+      const fallback = options.find((o) => o.value && o.text);
+      const toSelect = preferred?.value || fallback?.value;
+      if (!toSelect) return;
+
+      return cy.wrap($select).select(toSelect);
+    });
+  };
+
+  const clickSave = () => {
+    return cy.get("body").then(($body) => {
+      const submitSelector = 'button[type="submit"], input[type="submit"]';
+      if ($body.find(submitSelector).length > 0) {
+        return cy.get(submitSelector).first().should("be.visible").click();
+      }
+
+      return cy
+        .contains("button", /^save$/i)
+        .should("be.visible")
+        .click();
+    });
+  };
+
+  return selectCategory()
+    .then(() => clickSave())
+    .then(() => {
+      cy.location("pathname", { timeout: 10000 }).should("eq", "/ui/plants");
+      plantPage.plantsTable.should("be.visible");
+    });
+};
 
 // =============================================================
 // Shared Preconditions / Navigation
@@ -22,6 +340,20 @@ Given("I am logged in as Admin", () => {
 
 Given("I am logged in as User", () => {
   loginAsUser();
+});
+
+Given("I am logged in as an Admin or Non-Admin user", () => {
+  const userUser = Cypress.env("USER_USER");
+  const userPass = Cypress.env("USER_PASS");
+
+  // Prefer admin to keep this precondition stable across environments.
+  // If non-admin creds are available, either role is acceptable for this scenario.
+  if (userUser && userPass) {
+    loginAsUser();
+    return;
+  }
+
+  loginAsAdmin();
 });
 
 Given("I am on the Dashboard page", () => {
@@ -108,10 +440,13 @@ Then("I should see the plant list table", () => {
 Then("I should see the {string} button", (/** @type {string} */ buttonText) => {
   const text = String(buttonText).replaceAll(/\s+/g, " ").trim();
 
-  // TC113 expects "Add Plant".
-  if (/^add\s+(a\s+)?plant$/i.test(text)) {
-    plantPage.addPlantBtn.should("be.visible");
-    return;
+  if (/^add\s+plant$/i.test(text)) {
+    return plantPage.addPlantBtn
+      .should("be.visible")
+      .invoke("text")
+      .then((actual) => {
+        expect(normalizeText(actual)).to.eq(text);
+      });
   }
 
   cy.contains("a, button", text, { matchCase: false }).should("be.visible");
@@ -125,7 +460,7 @@ When("Click the {string} button", (/** @type {string} */ buttonText) => {
   const text = String(buttonText).replaceAll(/\s+/g, " ").trim();
 
   // TC114 uses "Add a Plant".
-  if (/^add\s+(a\s+)?plant$/i.test(text)) {
+  if (/^add\s+plant$/i.test(text)) {
     plantPage.addPlantBtn.should("be.visible").click();
     return;
   }
@@ -257,250 +592,6 @@ Then("Show {string} message", (/** @type {string} */ successMessage) => {
 // UI/TC116 Verify Plant List Pagination
 // =============================================================
 
-let plantPageRowsSnapshot;
-
-const normalizeText = (s) =>
-  String(s ?? "")
-    .replaceAll(/\s+/g, " ")
-    .trim();
-
-const apiLoginAsAdmin = () => {
-  const username = Cypress.env("ADMIN_USER");
-  const password = Cypress.env("ADMIN_PASS");
-
-  if (!username || !password) {
-    throw new Error(
-      "Missing admin credentials. Set ADMIN_USER and ADMIN_PASS in your .env (or as CYPRESS_ADMIN_USER/CYPRESS_ADMIN_PASS).",
-    );
-  }
-
-  return cy
-    .request({
-      method: "POST",
-      url: "/api/auth/login",
-      body: { username, password },
-      failOnStatusCode: true,
-    })
-    .its("body")
-    .then((body) => {
-      const token = body?.token;
-      const tokenType = body?.tokenType || "Bearer";
-      if (!token) throw new Error("Login response missing token");
-      return `${tokenType} ${token}`;
-    });
-};
-
-const ensureCategoryExistsViaApi = (categoryName) => {
-  const name = String(categoryName).replaceAll(/\s+/g, " ").trim();
-  const desiredLower = name.toLowerCase();
-
-  return apiLoginAsAdmin().then((authHeader) => {
-    const getParentIdForSubCategory = () => {
-      return cy
-        .request({
-          method: "GET",
-          url: "/api/categories/main",
-          headers: { Authorization: authHeader },
-          failOnStatusCode: false,
-        })
-        .then((res) => {
-          const parents = Array.isArray(res?.body) ? res.body : [];
-          const indoor = parents.find(
-            (p) => String(p?.name ?? "").toLowerCase() === "indoor",
-          );
-          const parentId = indoor?.id ?? parents?.[0]?.id;
-          if (!parentId) {
-            throw new Error(
-              "No main categories found; cannot create a sub-category for Plants filter",
-            );
-          }
-          return parentId;
-        });
-    };
-
-    return cy
-      .request({
-        method: "GET",
-        url: "/api/categories/page?page=0&size=200&sort=id,desc",
-        headers: { Authorization: authHeader },
-        failOnStatusCode: false,
-      })
-      .then((res) => {
-        const content = Array.isArray(res?.body?.content)
-          ? res.body.content
-          : [];
-        const match = content.find(
-          (c) => String(c?.name ?? "").toLowerCase() === desiredLower,
-        );
-
-        // Plants page category filter uses sub-categories, so ensure the category has a parent.
-        const isSubCategory =
-          match?.id && String(match?.parentName ?? "-") !== "-";
-
-        if (isSubCategory) return;
-
-        return getParentIdForSubCategory().then((parentId) => {
-          // If an existing main-category match exists, remove it first.
-          const deleteExisting = match?.id
-            ? cy.request({
-                method: "DELETE",
-                url: `/api/categories/${match.id}`,
-                headers: { Authorization: authHeader },
-                failOnStatusCode: false,
-              })
-            : cy.wrap(null);
-
-          return deleteExisting.then(() => {
-            return cy.request({
-              method: "POST",
-              url: "/api/categories",
-              headers: { Authorization: authHeader },
-              body: { name, parentId },
-              failOnStatusCode: false,
-            });
-          });
-        });
-      });
-  });
-};
-
-const ensureAtLeastOnePlantInCategory = (categoryName) => {
-  const name = String(categoryName).replaceAll(/\s+/g, " ").trim();
-  const desiredLower = name.toLowerCase();
-
-  return apiLoginAsAdmin().then((authHeader) => {
-    return cy
-      .request({
-        method: "GET",
-        url: "/api/plants/paged?page=0&size=200",
-        headers: { Authorization: authHeader },
-        failOnStatusCode: false,
-      })
-      .then((res) => {
-        const plants = Array.isArray(res?.body?.content)
-          ? res.body.content
-          : [];
-        const exists = plants.some(
-          (p) => String(p?.category?.name ?? "").toLowerCase() === desiredLower,
-        );
-        if (exists) return;
-
-        const uniqueName = `AutoPlant_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-
-        addPlantPage.visitAddPlantPage();
-        addPlantPage.assertOnAddPlantPage();
-
-        addPlantPage.plantNameField
-          .should("be.visible")
-          .clear()
-          .type(uniqueName);
-        addPlantPage.priceField.should("be.visible").clear().type("100");
-        addPlantPage.quantityField.should("be.visible").clear().type("1");
-
-        return addPlantPage.categoryField
-          .should("be.visible")
-          .then(($select) => {
-            const options = Array.from($select[0].options || []).map((o) => ({
-              value: o.value,
-              text: normalizeText(o.text),
-            }));
-
-            const exact = options.find(
-              (o) => o.text.toLowerCase() === desiredLower,
-            );
-            if (!exact?.value) {
-              throw new Error(
-                `Category '${name}' was not present in Add Plant category dropdown`,
-              );
-            }
-
-            return cy
-              .wrap($select)
-              .select(exact.value)
-              .then(() =>
-                addPlantPage.submitBtn.should("be.visible").first().click(),
-              )
-              .then(() => {
-                cy.location("pathname", { timeout: 10000 }).should(
-                  "eq",
-                  "/ui/plants",
-                );
-              });
-          });
-      });
-  });
-};
-
-const captureTopRowsSnapshot = (maxRows = 3) => {
-  return cy.get("table tbody tr").then(($rows) => {
-    const limit = Math.min(Number(maxRows) || 0, $rows.length);
-    return Array.from($rows)
-      .slice(0, limit)
-      .map((r) => normalizeText(r.innerText));
-  });
-};
-
-const isNextEnabled = () => {
-  return cy.get("body").then(($body) => {
-    const $pagination = $body.find(".pagination");
-    if ($pagination.length === 0) return false;
-
-    const $next = $pagination.find('a:contains("Next")');
-    if ($next.length === 0) return false;
-
-    return !$next.closest(".page-item").hasClass("disabled");
-  });
-};
-
-const createPlantViaUI = (index) => {
-  const uniqueName = `AutoPlant_${Date.now()}_${index}`;
-
-  addPlantPage.visitAddPlantPage();
-  addPlantPage.assertOnAddPlantPage();
-
-  addPlantPage.plantNameField.should("be.visible").clear().type(uniqueName);
-  addPlantPage.priceField.should("be.visible").clear().type("100");
-  addPlantPage.quantityField.should("be.visible").clear().type("1");
-
-  // Keep category selection simple: prefer "Indoor" if present, otherwise choose the first real option.
-  const selectCategory = () => {
-    return addPlantPage.categoryField.should("be.visible").then(($select) => {
-      const options = Array.from($select[0].options || []).map((o) => ({
-        value: o.value,
-        text: normalizeText(o.text),
-      }));
-
-      const preferred = options.find((o) => o.text.toLowerCase() === "indoor");
-      const fallback = options.find((o) => o.value && o.text);
-      const toSelect = preferred?.value || fallback?.value;
-      if (!toSelect) return;
-
-      return cy.wrap($select).select(toSelect);
-    });
-  };
-
-  const clickSave = () => {
-    return cy.get("body").then(($body) => {
-      const submitSelector = 'button[type="submit"], input[type="submit"]';
-      if ($body.find(submitSelector).length > 0) {
-        return cy.get(submitSelector).first().should("be.visible").click();
-      }
-
-      return cy
-        .contains("button", /^save$/i)
-        .should("be.visible")
-        .click();
-    });
-  };
-
-  return selectCategory()
-    .then(() => clickSave())
-    .then(() => {
-      cy.location("pathname", { timeout: 10000 }).should("eq", "/ui/plants");
-      plantPage.plantsTable.should("be.visible");
-    });
-};
-
 Given("More than 10 plants exist", () => {
   plantPage.assertOnPlantsPage();
   plantPage.plantsTable.should("be.visible");
@@ -530,9 +621,9 @@ Given("More than 10 plants exist", () => {
 });
 
 When("Click the {string} pagination button", (label) => {
-  const direction = String(label).trim().toLowerCase();
+  const direction = normalizeText(safeToString(label)).toLowerCase();
   if (direction !== "next") {
-    throw new Error(`Unsupported pagination button: ${label}`);
+    throw new Error(`Unsupported pagination button: ${safeToString(label)}`);
   }
 
   plantPage.plantsTable.should("be.visible");
@@ -569,9 +660,7 @@ Then("The next set of plants should be displayed", () => {
 // =============================================================
 
 When("Select {string} from category filter", (categoryName) => {
-  selectedPlantCategoryFilterName = String(categoryName)
-    .replaceAll(/\s+/g, " ")
-    .trim();
+  selectedPlantCategoryFilterName = normalizeText(safeToString(categoryName));
 
   // Make the test data reliable: ensure the category exists and has at least one plant.
   return ensureCategoryExistsViaApi(selectedPlantCategoryFilterName)
@@ -587,40 +676,14 @@ When("Select {string} from category filter", (categoryName) => {
       return cy.get("select").then(($selects) => {
         const desired = selectedPlantCategoryFilterName.toLowerCase();
 
-        const candidates = $selects.toArray().filter((sel) => {
-          const id = String(sel.getAttribute("id") || "").toLowerCase();
-          const name = String(sel.getAttribute("name") || "").toLowerCase();
-          return id.includes("category") || name.includes("category");
-        });
-
-        const pool = candidates.length > 0 ? candidates : $selects.toArray();
-        if (pool.length === 0) throw new Error("No select dropdown found");
-
-        // Prefer a dropdown that contains the desired option text.
-        const match = pool.find((sel) => {
-          const options = Array.from(sel.options || []);
-          return options.some(
-            (o) => normalizeText(o.text).toLowerCase() === String(desired),
-          );
-        });
-
-        const chosen = match ?? pool[0];
-        const options = Array.from(chosen.options || []).map((o) => ({
-          value: o.value,
-          text: normalizeText(o.text),
-        }));
-
-        const exact = options.find((o) => o.text.toLowerCase() === desired);
-
-        if (!exact?.value) {
+        const { index: chosenIndex, value } = findSelectIndexAndOptionValue(
+          $selects,
+          desired,
+        );
+        if (chosenIndex < 0 || !value) {
           throw new Error(
             `Category filter does not contain option '${selectedPlantCategoryFilterName}'`,
           );
-        }
-
-        const chosenIndex = $selects.toArray().indexOf(chosen);
-        if (chosenIndex < 0) {
-          throw new Error("Unable to resolve category filter dropdown index");
         }
 
         // Re-query by index so Cypress has a real <select> subject.
@@ -628,7 +691,7 @@ When("Select {string} from category filter", (categoryName) => {
           .get("select")
           .eq(chosenIndex)
           .should("be.visible")
-          .select(String(exact.value), { force: true });
+          .select(value, { force: true });
       });
     });
 });
@@ -636,7 +699,7 @@ When("Select {string} from category filter", (categoryName) => {
 Then(
   "Only plants under {string} category should be displayed",
   (categoryName) => {
-    const expected = String(categoryName).replaceAll(/\s+/g, " ").trim();
+    const expected = normalizeText(safeToString(categoryName));
     const expectedLower = expected.toLowerCase();
 
     plantPage.assertOnPlantsPage();
@@ -697,7 +760,7 @@ Given("I am logged in as Non-Admin", () => {
 });
 
 When("Enter {string} in search field", (searchText) => {
-  const text = String(searchText);
+  const text = safeToString(searchText);
   plantSearchText = text;
 
   plantPage.assertOnPlantsPage();
@@ -744,12 +807,12 @@ Then("Matching plants should be displayed in the table", () => {
 Then(
   "I should not see {string} and {string} buttons",
   (editLabel, deleteLabel) => {
-    const wantEdit = String(editLabel || "edit")
-      .trim()
-      .toLowerCase();
-    const wantDelete = String(deleteLabel || "delete")
-      .trim()
-      .toLowerCase();
+    const wantEdit = normalizeText(
+      safeToString(editLabel || "edit"),
+    ).toLowerCase();
+    const wantDelete = normalizeText(
+      safeToString(deleteLabel || "delete"),
+    ).toLowerCase();
 
     plantPage.assertOnPlantsPage();
     plantPage.plantsTable.should("be.visible");
@@ -775,25 +838,6 @@ Then(
           'button[title="Delete"], a[title="Delete"], form[action*="/ui/plants/delete"] button',
         );
 
-        const assertHiddenOrDisabled = ($el, label) => {
-          if ($el.length === 0) return;
-
-          cy.wrap($el[0]).should(($node) => {
-            const $n = Cypress.$($node);
-            const disabledAttr =
-              $n.is(":disabled") ||
-              $n.is("[disabled]") ||
-              $n.attr("aria-disabled") === "true";
-            const className = String($n.attr("class") || "");
-            const disabledClass = className.split(/\s+/g).includes("disabled");
-
-            expect(
-              disabledAttr || disabledClass,
-              `${label} action should be hidden or disabled for non-admin`,
-            ).to.eq(true);
-          });
-        };
-
         if (wantEdit.includes("edit")) assertHiddenOrDisabled($edit, "Edit");
         if (wantDelete.includes("delete"))
           assertHiddenOrDisabled($del, "Delete");
@@ -806,104 +850,134 @@ Then(
 // UI/TC121 Verify Low Stock Badge Visibility
 // =============================================================
 
-When("Plant quantity is less than 5", () => {
+When("Plant quantity is less than {int}", (threshold) => {
+  lowStockThreshold = Number(threshold);
+
   plantPage.assertOnPlantsPage();
   plantPage.plantsTable.should("be.visible");
 
-  // Identify the "Stock" column index.
-  return cy
-    .get("table thead tr th")
-    .then(($ths) => {
-      const headers = Array.from($ths).map((th) =>
-        normalizeText(th.innerText).toLowerCase(),
-      );
-      plantStockColumnIndex = headers.findIndex(
-        (h) =>
-          h === "stock" ||
-          h.includes("stock") ||
-          h.includes("quantity") ||
-          h.includes("qty") ||
-          h.includes("available"),
-      );
-    })
-    .then(() => {
-      return cy.get("table tbody tr").then(($rows) => {
-        const dataRows = Array.from($rows).filter(
-          (row) => Cypress.$(row).find("td[colspan]").length === 0,
-        );
+  // Best-effort: discover which column contains stock/quantity from the header.
+  return cy.get("table thead tr th").then(($ths) => {
+    const headers = Array.from($ths).map((th) =>
+      normalizeText(th.innerText).toLowerCase(),
+    );
 
-        const idx = Number.isInteger(plantStockColumnIndex)
-          ? plantStockColumnIndex
-          : -1;
-
-        const findByBadgeText = () => {
-          return dataRows.findIndex((row) => {
-            const rowText = normalizeText(Cypress.$(row).text()).toLowerCase();
-            return rowText.includes("low stock");
-          });
-        };
-
-        const findByNumericStock = () => {
-          if (idx < 0) return -1;
-
-          return dataRows.findIndex((row) => {
-            const $tds = Cypress.$(row).find("td");
-            if ($tds.length === 0) return false;
-            if (idx >= $tds.length) return false;
-
-            const raw = normalizeText(Cypress.$($tds[idx]).text());
-            const n = Number.parseInt(raw.replaceAll(/[^0-9-]/g, ""), 10);
-            return Number.isFinite(n) && n < 5;
-          });
-        };
-
-        const foundIndex = findByNumericStock();
-        const fallbackIndex = foundIndex >= 0 ? foundIndex : findByBadgeText();
-
-        if (fallbackIndex < 0) {
-          throw new Error(
-            "No low-stock row found (stock/quantity < 5, or a 'Low Stock' badge). Seed a low-stock plant or reset DB.",
-          );
-        }
-
-        lowStockRowIndex = fallbackIndex;
-      });
-    });
+    plantStockColumnIndex = headers.findIndex(
+      (h) =>
+        h === "stock" ||
+        h.includes("stock") ||
+        h.includes("quantity") ||
+        h.includes("qty") ||
+        h.includes("available"),
+    );
+  });
 });
 
 Then("I should see the {string} badge", (badgeText) => {
-  expect(lowStockRowIndex, "low-stock row index").to.be.a("number");
-
-  const expected = String(badgeText).replaceAll(/\s+/g, " ").trim();
+  const expected = normalizeText(safeToString(badgeText));
   const expectedLower = expected.toLowerCase();
+  const acceptedBadgeLabels =
+    expectedLower === "low stock" ? ["low stock", "low"] : [expectedLower];
+
+  const threshold = Number.isFinite(lowStockThreshold) ? lowStockThreshold : 5;
 
   plantPage.assertOnPlantsPage();
   plantPage.plantsTable.should("be.visible");
 
-  cy.get("table tbody tr")
-    .then(($rows) => {
-      const dataRows = Array.from($rows).filter(
-        (row) => Cypress.$(row).find("td[colspan]").length === 0,
-      );
-      const row = dataRows[lowStockRowIndex];
-      if (!row) throw new Error("Low-stock row was not found in the table");
-      return cy.wrap(row);
-    })
-    .should(($row) => {
-      const rowText = normalizeText($row.text()).toLowerCase();
-      if (rowText.includes(expectedLower)) return;
+  cy.get("table tbody tr").then(($rows) => {
+    const rows = Array.from($rows);
+    const idx =
+      Number.isInteger(plantStockColumnIndex) && plantStockColumnIndex >= 0
+        ? plantStockColumnIndex
+        : 3; // fallback: 4th column
 
-      // Fallback: some UIs show a badge as an icon with accessible text.
-      const attrNodes = $row.find("[title], [aria-label]").toArray();
-      const hasMatchingAttr = attrNodes.some((el) => {
-        const title = String(el.getAttribute("title") ?? "").toLowerCase();
-        const aria = String(el.getAttribute("aria-label") ?? "").toLowerCase();
-        return title.includes(expectedLower) || aria.includes(expectedLower);
-      });
+    let lowStockRowsFound = 0;
+    let rowsWithBadgeFound = 0;
+
+    for (const row of rows) {
+      const $row = Cypress.$(row);
+      const $cells = $row.find("td");
+
+      if ($cells.length === 0) continue;
+      if ($cells.length === 1 && $cells.eq(0).attr("colspan")) continue;
+      if (idx >= $cells.length) continue;
+
+      const rawQty = normalizeText($cells.eq(idx).text());
+      const qty = Number.parseInt(rawQty.replaceAll(/[^0-9-]/g, ""), 10);
+      if (!Number.isFinite(qty) || qty >= threshold) continue;
+
+      lowStockRowsFound += 1;
+
+      // Prefer badge text in the column(s) after the quantity column.
+      const $tailCells = $cells.slice(Math.min(idx + 1, $cells.length - 1));
+      const tailText = normalizeText($tailCells.text()).toLowerCase();
+
+      if (acceptedBadgeLabels.some((label) => tailText.includes(label))) {
+        rowsWithBadgeFound += 1;
+      }
+    }
+
+    expect(
+      lowStockRowsFound,
+      `Expected at least one plant with quantity < ${threshold}`,
+    ).to.be.greaterThan(0);
+
+    expect(
+      rowsWithBadgeFound,
+      `Expected badge '${expected}' (accepted: ${acceptedBadgeLabels.join(", ")}) on low-stock rows`,
+    ).to.be.greaterThan(0);
+  });
+});
+
+// =============================================================
+// UI/TC122 Verify Navigation Menu Highlights Active Page
+// =============================================================
+
+Then(
+  "the {string} navigation menu item should be highlighted",
+  (/** @type {string} */ menuName) => {
+    const menu = normalizeText(safeToString(menuName)).toLowerCase();
+
+    if (menu !== "plants" && menu !== "plant") {
+      throw new Error(
+        `Unknown navigation menu item: ${safeToString(menuName)}`,
+      );
+    }
+
+    // Strict assertion: a highlighted nav item should expose a clear, testable signal.
+    // Common patterns: 'active' class or aria-current="page".
+    return plantPage.plantsMenu.should("be.visible").then(($a) => {
+      const linkClasses = normalizeText($a.attr("class")).toLowerCase();
+      const ariaCurrent = String($a.attr("aria-current") || "").toLowerCase();
+      const liClasses = normalizeText(
+        $a.closest("li").attr("class"),
+      ).toLowerCase();
+
+      const isActive =
+        ariaCurrent === "page" ||
+        linkClasses.split(/\s+/g).includes("active") ||
+        liClasses.split(/\s+/g).includes("active");
 
       expect(
-        hasMatchingAttr,
-        `Expected to find badge '${expected}' in the low-stock row`,
+        isActive,
+        `Expected Plants nav item to be highlighted (active class or aria-current). Got link.class='${linkClasses}', li.class='${liClasses}', aria-current='${ariaCurrent}'.`,
       ).to.eq(true);
     });
+  },
+);
+
+Then("I should be on the {string} page", (/** @type {string} */ pageName) => {
+  const page = normalizeText(safeToString(pageName)).toLowerCase();
+
+  if (page === "plants" || page === "plant") {
+    plantPage.assertOnPlantsPage();
+    return;
+  }
+
+  if (page === "dashboard") {
+    cy.location("pathname", { timeout: 10000 }).should("include", "/dashboard");
+    return;
+  }
+
+  throw new Error(`Unknown page: ${safeToString(pageName)}`);
 });

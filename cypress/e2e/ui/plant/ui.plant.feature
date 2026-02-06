@@ -16,7 +16,7 @@ Feature: plant Management Module
     @UI/TC113
     Scenario: UI/TC113 Verify Add Plant button visibility
         Given I am logged in as Admin
-        And I am on the "Plants" page
+        And I am on the "Plants" page 
         Then I should see the "Add Plant" button
 
     @UI/TC114
@@ -84,3 +84,15 @@ Feature: plant Management Module
         And I am on the "Plants" page
         When Plant quantity is less than 5
         Then I should see the "Low Stock" badge
+
+    @UI/TC122
+    Scenario: UI/TC122 Verify Navigation Menu Highlights Active Page
+        Given I am logged in as an Admin or Non-Admin user
+        And I am on the Dashboard page
+        When I click the "Plants" menu
+        Then the "Plants" navigation menu item should be highlighted
+        And I should be on the "Plants" page
+
+ 
+        
+

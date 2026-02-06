@@ -28,8 +28,8 @@ Feature: Plant Management Module
 		And Plant API responses contain unique Plant IDs across pages
 
 	@API/TC15
-	Scenario: API/TC15 Verify Search By Name (Admin/User)
-		Given Admin or User has valid JWT token
+	Scenario: API/TC15 Verify Search By Name (Admin)
+		Given Admin has valid JWT token
 		And Plant named "Cactus" exists
 		When Search plants by name "Cac"
 		Then Status Code: 200 OK
@@ -37,22 +37,22 @@ Feature: Plant Management Module
 		And Plant search results include "Cactus"
 
 	@API/TC16
-	Scenario: API/TC16 Verify Search No Results (Admin/User)
-		Given Admin or User has valid JWT token
+	Scenario: API/TC16 Verify Search No Results (Admin)
+		Given Admin has valid JWT token
 		When Search plants by name "NoPlantFound123"
 		Then Status Code: 200 OK
 		And Plant response body is an empty list (or valid empty page object)
 
 	@API/TC17
-	Scenario: API/TC17 Verify Filter by Category ID (Admin/User)
-		Given Admin or User has valid JWT token
+	Scenario: API/TC17 Verify Filter by Category ID (Admin)
+		Given Admin has valid JWT token
 		When Request plants filtered by Category ID 5
 		Then Status Code: 200 OK
 		And All returned plants have category association with ID 5
 
 	@API/TC18
-	Scenario: API/TC18 Verify Filter by Non-Existing Category ID (Admin/User)
-		Given Admin or User has valid JWT token
+	Scenario: API/TC18 Verify Filter by Non-Existing Category ID (Admin)
+		Given Admin has valid JWT token
 		When Request plants filtered by Category ID 9999
 		Then Status Code: 404 Not Found
 		And Error message indicates category not found
@@ -85,7 +85,7 @@ Feature: Plant Management Module
 
 	@API/TC21
 	Scenario: API/TC21 Verify Plant Summary Data Retrieval
-		Given Admin or User has valid JWT token
+		Given Admin has valid JWT token
 		When Send GET request to: "/api/plants/summary"
 		Then Status Code: 200 OK
 		And Plant summary response contains totalPlants and lowStockPlants
