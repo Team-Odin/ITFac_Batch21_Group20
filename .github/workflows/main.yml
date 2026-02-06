@@ -137,10 +137,10 @@ jobs:
             echo "USER_USER=\"$(esc "$USER_USER_VALUE")\"";
             echo "USER_PASS=\"$(esc "$USER_PASS_VALUE")\"";
             echo "";
-            echo "DB_RESET_ALLOW_NON_LOCAL=\"$(esc \"${DB_RESET_ALLOW_NON_LOCAL:-false}\")\"";
-            echo "DB_RESET_ON_RUN=\"$(esc \"${DB_RESET_ON_RUN:-}\")\"";
-            echo "DB_RESET_AFTER_RUN=\"$(esc \"${DB_RESET_AFTER_RUN:-}\")\"";
-            echo "DB_RESET_SQL_FILE=\"$(esc \"${DB_RESET_SQL_FILE:-sql/sample_plant_data_full.sql}\")\"";
+            echo "DB_RESET_ALLOW_NON_LOCAL=\"$(esc "${DB_RESET_ALLOW_NON_LOCAL:-false}")\"";
+            echo "DB_RESET_ON_RUN=\"$(esc "${DB_RESET_ON_RUN:-}")\"";
+            echo "DB_RESET_AFTER_RUN=\"$(esc "${DB_RESET_AFTER_RUN:-}")\"";
+            echo "DB_RESET_SQL_FILE=\"$(esc "${DB_RESET_SQL_FILE:-sql/sample_plant_data_full.sql}")\"";
           } > .env
 
           # Also export for subsequent steps (without relying on parsing .env).
