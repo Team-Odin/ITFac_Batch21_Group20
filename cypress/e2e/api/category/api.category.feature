@@ -48,7 +48,7 @@ Feature: Category Management Module
     When Send POST request with body:
       """
       {
-          "name": "",
+          "name": null,
           "parent": null
       }
       """
@@ -150,7 +150,7 @@ Feature: Category Management Module
     And Response message indicates that the method or path is invalid
 
   @API/TC32
-  Scenario: API/TC32 Verify Regular User can update a category
+  Scenario: API/TC32 Verify Regular User cannot update a category
     Given User has valid JWT token
     And Category with ID "3" exists
     When I send a PUT request to "/api/categories/3" with body:
@@ -160,5 +160,5 @@ Feature: Category Management Module
         "parent": { "id": 1 }
       }
       """
-    Then Status Code: 200 OK
-    And Response contains the updated name "flowers02"
+    Then Status Code: 403 Forbidden
+    And Response message indicates authentication failure
