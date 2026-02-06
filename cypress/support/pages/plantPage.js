@@ -43,6 +43,54 @@ class PlantPage {
       }
     });
   }
+
+  // ========================================
+  // API Helper Methods
+  // ========================================
+
+  static apiLoginAsAdmin() {
+    const username = Cypress.env("ADMIN_USER");
+    const password = Cypress.env("ADMIN_PASS");
+
+    if (!username || !password) {
+      throw new Error(
+        "Missing admin credentials. Set ADMIN_USER and ADMIN_PASS in your .env (or as CYPRESS_ADMIN_USER/CYPRESS_ADMIN_PASS).",
+      );
+    }
+
+    return cy
+      .request({
+        method: "POST",
+        url: "/api/auth/login",
+        body: { username, password },
+        failOnStatusCode: true,
+      })
+      .its("body")
+      .then((body) => {
+        const token = body?.token;
+        const tokenType = body?.tokenType || "Bearer";
+        if (!token) throw new Error("Login response missing token");
+        return `${tokenType} ${token}`;
+      });
+  }
+
+  static normalizeEndpoint(raw) {
+    const cleaned = String(raw).replaceAll(/\s+/g, "").trim();
+    if (!cleaned) throw new Error("Endpoint is empty");
+    if (cleaned.startsWith("/")) return cleaned;
+    if (cleaned.startsWith("api/")) return `/${cleaned}`;
+    if (cleaned.startsWith("api")) return `/${cleaned}`;
+    return `/${cleaned}`;
+  }
+
+  constructor(authHeader = null) {
+    this.authHeader = authHeader;
+  }
+
+  setAuthHeader(authHeader) {
+    this.authHeader = authHeader;
+  }
 }
 
 export const plantPage = new PlantPage();
+export default PlantPage;
