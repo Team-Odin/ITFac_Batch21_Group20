@@ -172,6 +172,8 @@ const shouldResetForTrigger = (trigger) => {
   const autoEnabled = local;
   const onRun = parseBool(process.env.DB_RESET_ON_RUN);
   const afterRun = parseBool(process.env.DB_RESET_AFTER_RUN);
+  const beforeSpec = parseBool(process.env.DB_RESET_BEFORE_SPEC);
+  const afterSpec = parseBool(process.env.DB_RESET_AFTER_SPEC);
 
   if (trigger === "before:run") {
     return { enabled: onRun ?? autoEnabled };
@@ -179,6 +181,15 @@ const shouldResetForTrigger = (trigger) => {
 
   if (trigger === "after:run") {
     return { enabled: afterRun ?? autoEnabled };
+  }
+
+  // Spec-level resets are intentionally opt-in because they can be slow.
+  if (trigger === "before:spec") {
+    return { enabled: beforeSpec ?? false };
+  }
+
+  if (trigger === "after:spec") {
+    return { enabled: afterSpec ?? false };
   }
 
   // Manual task: if it's local, allow by default; if non-local, it will be blocked above.

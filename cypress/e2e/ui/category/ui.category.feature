@@ -14,7 +14,7 @@ Feature: Category Management Module
   Scenario: UI/TC02 Verify "Add Category" Page Navigation
     Given I am logged in as Admin
     And I am on the "Categories" page
-    When Click the "Add A Category" button
+    When Click the "Add Category" button
     Then System redirect to "/ui/categories/add"
 
   @UI/TC03

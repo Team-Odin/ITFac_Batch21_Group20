@@ -53,7 +53,7 @@ const resolveJavaCmd = () => {
 module.exports = defineConfig({
   video: false,
   defaultCommandTimeout: 5000,
-  pageLoadTimeout: 20000,
+  pageLoadTimeout: 10000,
   reporter: "mocha-allure-reporter",
   reporterOptions: {
     resultsDir: "allure-results",
@@ -173,6 +173,24 @@ module.exports = defineConfig({
           console.error("❌ Database reset (before:run) failed:", err?.message);
           throw err;
         }
+      });
+
+      on("before:spec", async () => {
+        try {
+          await resetDatabaseIfEnabled("before:spec");
+        } catch (err) {
+          console.error(
+            "❌ Database reset (before:spec) failed:",
+            err?.message,
+          );
+          throw err;
+        }
+      });
+
+      on("after:spec", () => {
+        return resetDatabaseIfEnabled("after:spec").catch((err) => {
+          console.error("❌ Database reset (after:spec) failed:", err?.message);
+        });
       });
 
       on("after:run", () => {

@@ -1,7 +1,8 @@
 class CategoryPage {
   get addCategoryBtn() {
     // Prefer a resilient locator based on the visible control label.
-    return cy.contains("a", /add\s+category/i);
+    // UI text may be "Add Category" or "Add A Category".
+    return cy.contains("a,button", /add\s+(a\s+)?category/i);
   }
 
   get searchNameInput() {
@@ -29,22 +30,23 @@ class CategoryPage {
   }
 
   get paginationInfo() {
-    return cy.get('.dataTables_info, .pagination-summary'); // Adjust selector to your UI
+    return cy.get(".dataTables_info, .pagination-summary"); // Adjust selector to your UI
   }
 
   get tableRows() {
-    return cy.get('table tbody tr');
+    return cy.get("table tbody tr");
   }
 
   get nextPageBtn() {
     // Selects the 'Next' link specifically if it's not disabled
-    return cy.get('li.next:not(.disabled) a');
+    return cy.get("li.next:not(.disabled) a");
   }
 
   get sidebarCategoryLink() {
-    // This targets the sidebar link specifically for Categories
-    // Adjust the text 'Categories' to match exactly what is in your sidebar
-    return cy.get('.sidebar, .nav-sidebar').contains('a', 'Categories');
+    // Prefer the actual navigation link to the Categories page.
+    return cy
+      .get('a[href="/ui/categories"], a[href^="/ui/categories?"]')
+      .contains(/categories/i);
   }
 
   editBtnByNameXPath(name) {
@@ -95,12 +97,12 @@ class CategoryPage {
 
   get idSortHeader() {
     // Targets the link inside the TH specifically for ID
-    return cy.get('th').contains('a', 'ID');
+    return cy.get("th").contains("a", "ID");
   }
 
   getTableIds() {
     // Extracts the text from the first column (ID) of every row
-    return cy.get('table tbody tr td:first-child').then(($cells) => {
+    return cy.get("table tbody tr td:first-child").then(($cells) => {
       return Cypress._.map($cells, (el) => parseInt(el.innerText));
     });
   }
@@ -110,7 +112,7 @@ class CategoryPage {
   }
 
   get categoryTableBody() {
-    return cy.get('table tbody');
+    return cy.get("table tbody");
   }
 
   getCategoryRowCount() {
@@ -267,8 +269,8 @@ class CategoryPage {
         const body = res?.body;
         const total =
           body &&
-            typeof body === "object" &&
-            Object.hasOwn(body, "totalElements")
+          typeof body === "object" &&
+          Object.hasOwn(body, "totalElements")
             ? Number(body.totalElements)
             : undefined;
 
@@ -523,10 +525,10 @@ class CategoryPage {
       .then((res) => {
         const match = Array.isArray(res?.body?.content)
           ? res.body.content.find(
-            (c) =>
-              String(c?.name).toLowerCase() === target.toLowerCase() &&
-              (c?.parentName === "-" || c?.parentName == null),
-          )
+              (c) =>
+                String(c?.name).toLowerCase() === target.toLowerCase() &&
+                (c?.parentName === "-" || c?.parentName == null),
+            )
           : undefined;
         return match;
       });
