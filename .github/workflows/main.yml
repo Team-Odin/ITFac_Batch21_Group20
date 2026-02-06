@@ -57,7 +57,7 @@ jobs:
           ADMIN_USER: ${{ secrets.CI_ADMIN_USER }}
           ADMIN_PASS: ${{ secrets.CI_ADMIN_PASS }}
           USER_USER: ${{ secrets.CI_USER_USER }}
-          USER_PASS: ${{ secrets.UI_USER_PASS }}
+          USER_PASS: ${{ secrets.UI_USER_PASS || secrets.CI_USER_PASS }}
 
           API_BASE_URL_SECRET: ${{ secrets.CI_API_BASE_URL }}
           DB_URL_SECRET: ${{ secrets.CI_DB_URL }}
@@ -70,7 +70,6 @@ jobs:
           # Defaults
           API_BASE_URL="${API_BASE_URL_SECRET:-http://localhost:8080}"
 
-          # Write .env safely; values are quoted for dotenv.
           esc() {
             # Escape backslashes and double quotes for dotenv "..." values
             printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
@@ -104,15 +103,13 @@ jobs:
           fi
           shopt -u nocasematch
 
-          # Login credentials:
-          # - Prefer GitHub secrets when present
-          # - Fall back to default training-app credentials so Cypress still runs and produces Allure output
+          # Login credentials fallback (so Cypress still runs)
           ADMIN_USER_VALUE="${ADMIN_USER:-admin}"
           ADMIN_PASS_VALUE="${ADMIN_PASS:-admin123}"
           USER_USER_VALUE="${USER_USER:-testuser}"
           USER_PASS_VALUE="${USER_PASS:-test123}"
 
-          # Validate required values (especially for remote DB mode)
+          # Validate required DB values (especially remote mode)
           missing=0
           for v in DB_URL DB_USERNAME DB_PASSWORD; do
             if [ -z "${!v:-}" ]; then
