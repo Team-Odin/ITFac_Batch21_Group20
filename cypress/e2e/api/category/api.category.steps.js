@@ -1556,7 +1556,7 @@ When("Send PUT request to: {string} with no body", (url) => {
     url: categoryPage.constructor.normalizeEndpoint(url),
     headers: { Authorization: authHeader },
     failOnStatusCode: false, // Prevents Cypress from failing on 500/405
-    body: {}
+    body: {},
   }).then((response) => {
     lastResponse = response;
   });
@@ -1572,8 +1572,10 @@ Then("Status Code: {int} Method Not Allowed", (expectedCode) => {
   }
 
   // Accept 405 (Correct) OR 500 (Existing Bug) to keep the pipeline green
-  expect(actualStatus).to.be.oneOf([expectedCode, 500],
-    `Expected ${expectedCode} but got ${actualStatus}`);
+  expect(actualStatus).to.be.oneOf(
+    [expectedCode, 500],
+    `Expected ${expectedCode} but got ${actualStatus}`,
+  );
 });
 
 // 4. The Message Validation Step
@@ -1584,7 +1586,12 @@ Then("Response message indicates that the method or path is invalid", () => {
 
   // Extract the message from typical Spring Boot / Java error structures
   // Some APIs use 'error', some use 'message', some use 'details'
-  const errorMsg = (body.error || body.message || body.details || "").toLowerCase();
+  const errorMsg = (
+    body.error ||
+    body.message ||
+    body.details ||
+    ""
+  ).toLowerCase();
 
   // We add 'internal_server_error' to match the actual server response
   const validMessages = [
@@ -1592,16 +1599,21 @@ Then("Response message indicates that the method or path is invalid", () => {
     "unauthorized",
     "bad request",
     "internal server error",
-    "internal_server_error" // Added underscored version
+    "internal_server_error", // Added underscored version
   ];
 
-  // Logic: If we got a 500, we expect it to be a server error. 
+  // Logic: If we got a 500, we expect it to be a server error.
   // If we got a 405, we expect it to be method not allowed.
   if (lastResponse.status === 500) {
-    expect(errorMsg).to.be.oneOf(["internal server error", "internal_server_error"],
-      `Server crashed with: ${errorMsg}`);
+    expect(errorMsg).to.be.oneOf(
+      ["internal server error", "internal_server_error"],
+      `Server crashed with: ${errorMsg}`,
+    );
   } else {
-    expect(validMessages).to.include(errorMsg, `Unexpected error message: ${errorMsg}`);
+    expect(validMessages).to.include(
+      errorMsg,
+      `Unexpected error message: ${errorMsg}`,
+    );
   }
 });
 
@@ -1622,7 +1634,8 @@ When("I send a PUT request to {string} with body:", (url, docString) => {
   try {
     body = JSON.parse(raw);
   } catch (error) {
-    const message = error instanceof Error ? error.message : JSON.stringify(error);
+    const message =
+      error instanceof Error ? error.message : JSON.stringify(error);
     throw new Error(`Invalid JSON body. ${message}`);
   }
 
@@ -1631,7 +1644,7 @@ When("I send a PUT request to {string} with body:", (url, docString) => {
     url: categoryPage.constructor.normalizeEndpoint(url),
     headers: { Authorization: authHeader },
     body: body,
-    failOnStatusCode: false
+    failOnStatusCode: false,
   }).then((response) => {
     lastResponse = response;
   });
