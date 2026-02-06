@@ -2,7 +2,7 @@ name: Cypress Tests & Allure Report
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, manoj]
   pull_request:
     branches: [main, master]
 
@@ -60,6 +60,15 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Defaults
+          API_BASE_URL="http://localhost:8080"
+
+          # Write .env safely; values are quoted for dotenv.
+          esc() {
+            # Escape backslashes and double quotes for dotenv "..." values
+            printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+          }
+
           # Use the workflow's local MySQL service (stable + allows DB reset).
           DB_URL="jdbc:mysql://127.0.0.1:3306/qa_training?useSSL=false&allowPublicKeyRetrieval=true"
           DB_USERNAME="root"
@@ -103,15 +112,6 @@ jobs:
           fi
 
           echo "CI_SECRETS_AVAILABLE=true" >> "$GITHUB_ENV"
-
-          # Defaults
-          API_BASE_URL="http://localhost:8080"
-
-          # Write .env safely (no heredoc indentation issues; values are quoted for dotenv).
-          esc() {
-            # Escape backslashes and double quotes for dotenv "..." values
-            printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
-          }
 
           {
             echo "DB_USERNAME=\"$(esc "$DB_USERNAME")\"";
