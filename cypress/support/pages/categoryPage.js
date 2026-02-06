@@ -61,7 +61,9 @@ class CategoryPage {
   }
 
   visit() {
-    cy.visit("/ui/categories");
+    // Categories page can be slow to fully load on remote/shared environments.
+    // Override the default visit timeout for this page to reduce flakiness.
+    cy.visit("/ui/categories", { timeout: 60000 });
   }
 
   visitCategoryPage() {
@@ -283,12 +285,20 @@ class CategoryPage {
       return cy.wrap(null, { log: false });
     }
 
+    // Backend constraint: category name must be 3..10 characters.
+    // Generate a short, deterministic run id + 2-char suffix => length 9.
+    const runId = (Date.now() % 2176782336).toString(36).padStart(6, "0");
+
     const indices = Array.from({ length: howMany }, (_, i) => i);
     return cy.wrap(indices, { log: false }).each((i) => {
       const idx =
         typeof i === "number" || typeof i === "string" ? i : JSON.stringify(i);
-      const unique = Math.random().toString(16).slice(2);
-      const categoryName = `AutoTestCat_${Date.now()}_${unique}_${idx}`;
+
+      const suffix = (Number(idx) % 1296)
+        .toString(36)
+        .padStart(2, "0")
+        .slice(-2);
+      const categoryName = `C${runId}${suffix}`;
       return CategoryPage.apiCreateMainCategory(authHeader, categoryName);
     });
   }
@@ -297,8 +307,11 @@ class CategoryPage {
     const howMany = Number(count);
     if (!Number.isFinite(howMany) || howMany <= 0) return;
 
+    const runId = (Date.now() % 2176782336).toString(36).padStart(6, "0");
+
     for (let i = 0; i < howMany; i++) {
-      const categoryName = `AutoTestCat_${Date.now()}_${i}`;
+      const suffix = (Number(i) % 1296).toString(36).padStart(2, "0").slice(-2);
+      const categoryName = `C${runId}${suffix}`;
       this.addCategoryBtn.should("be.visible").click();
       cy.get('input[id="name"]')
         .should("be.visible")

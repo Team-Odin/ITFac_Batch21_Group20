@@ -567,6 +567,36 @@ Then("Status Code: {int} Unauthorized", (expectedStatus) => {
   expect(lastResponse.status).to.eq(Number(expectedStatus));
 });
 
+Then("Response body matches standard error schema", () => {
+  expect(lastResponse, "lastResponse should exist").to.exist;
+  expect(lastResponse.body, "response body").to.exist;
+
+  const body = lastResponse.body;
+  expect(body, "response body should be an object").to.be.an("object");
+
+  expect(body).to.have.property("status");
+  expect(body).to.have.property("error");
+  expect(body).to.have.property("message");
+  expect(body).to.have.property("timestamp");
+
+  // Expected schema (example): { status: number, error: string, message: string, timestamp: string }
+  // Note: backend may use HTTP status code (e.g. 400) or custom codes (e.g. 0).
+  expect(body.status, "body.status").to.satisfy(
+    (v) => typeof v === "number" || (typeof v === "string" && v.trim() !== ""),
+  );
+  expect(String(body.error), "body.error").to.be.a("string").and.not.be.empty;
+  expect(String(body.message), "body.message").to.be.a("string").and.not.be
+    .empty;
+
+  const ts = String(body.timestamp);
+  expect(ts, "body.timestamp").to.be.a("string").and.not.be.empty;
+  // Accept both Spring-style timestamps without zone (e.g. 2026-02-05T14:46:43.7886406)
+  // and ISO-8601 with zone (e.g. 2026-02-05T09:10:24.334Z).
+  expect(ts, "timestamp should resemble ISO-8601").to.match(
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})?$/,
+  );
+});
+
 function collectErrorMessages(body) {
   if (body == null) return [];
   if (typeof body === "string") return [body];
