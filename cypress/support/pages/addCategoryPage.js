@@ -16,7 +16,7 @@ class AddCategoryPage {
   }
 
   get cancelBtn() {
-    return cy.get('a[href="/ui/categories"]').contains('Cancel');
+    return cy.get('a[href="/ui/categories"]').contains("Cancel");
   }
 
   addACategory(categoryValue) {
@@ -34,7 +34,7 @@ class AddCategoryPage {
   }
 
   get categoryNameInput() {
-    return cy.get('#name'); // Adjust selector based on your HTML
+    return cy.get("#name"); // Adjust selector based on your HTML
   }
 
   get saveButton() {
@@ -42,8 +42,12 @@ class AddCategoryPage {
   }
 
   get errorMessage() {
-    // This typically targets a span or div with a specific class like .text-danger
-    return cy.get('.invalid-feedback, .text-danger');
+    // Prefer field-level feedback, but also allow alert-style errors.
+    // Exclude nav links like "Logout" that may use .text-danger.
+    return cy
+      .get("body")
+      .find(".invalid-feedback, form .text-danger, .alert-danger")
+      .not("a");
   }
 
   visit() {
