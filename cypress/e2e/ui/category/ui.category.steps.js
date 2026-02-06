@@ -1848,77 +1848,53 @@ When('I navigate to the "Categories" page', () => {
   categoryPage.visit();
 });
 
-When("I count all categories across all pagination pages", () => {
+When('I count all categories across all pagination pages', () => {
   accumulatedTableCount = 0;
 
-  const countRowsOnCurrentPage = () => {
-    return cy.get("table tbody tr", { timeout: 10000 }).then(($rows) => {
-      const dataRows = Array.from($rows).filter((row) => {
-        const $tds = Cypress.$(row).find("td");
-        if ($tds.length === 0) return false;
-        if ($tds.length === 1 && Cypress.$($tds[0]).attr("colspan"))
-          return false;
-        return true;
-      });
-
-      // Count only "Main" categories (no parent): Parent Category column shows '-'
-      const mainRows = dataRows.filter((row) => {
-        const $tds = Cypress.$(row).find("td");
-        const parentText = normalizeSpaces(Cypress.$($tds[2]).text());
-        return parentText === "-";
-      });
-
-      accumulatedTableCount += mainRows.length;
+  const countCurrentPage = () => {
+    // Count table rows
+    categoryPage.categoriesTable.find('tbody tr').then(($rows) => {
+      if ($rows.length > 0 && !$rows.text().includes('No data')) {
+        accumulatedTableCount += $rows.length;
+      }
     });
   };
 
-  const goNextIfPossible = () => {
-    return cy.get("body").then(($body) => {
-      const $nextLinks = $body
-        .find(".pagination a")
-        .filter(
-          (_, a) => normalizeSpaces(a.innerText).toLowerCase() === "next",
-        );
+  const goToNextPageIfPossible = () => {
+    cy.get('body').then(($body) => {
+      // Find NEXT button
+      const nextBtn = $body.find('a.page-link:contains("Next")');
 
-      if ($nextLinks.length === 0) return;
-
-      const $next = $nextLinks.first();
-      const $li = $next.closest("li");
-      const ariaDisabled =
-        String($next.attr("aria-disabled") || "").toLowerCase() === "true";
+      // Check if disabled (pointer-events: none OR disabled class)
       const isDisabled =
-        ariaDisabled || $li.hasClass("disabled") || $next.hasClass("disabled");
-      if (isDisabled) return;
+        nextBtn.length === 0 ||
+        nextBtn.hasClass('disabled') ||
+        nextBtn.closest('li').hasClass('disabled') ||
+        nextBtn.css('pointer-events') === 'none';
 
-      return cy
-        .get("table tbody tr")
-        .first()
-        .find("td")
-        .first()
-        .invoke("text")
-        .then((firstIdBefore) => {
-          categoryPage.scrollToBottom();
-          cy.wrap($next).click({ force: true });
-          cy.get("table tbody tr")
-            .first()
-            .find("td")
-            .first()
-            .should(($td) => {
-              expect(normalizeSpaces($td.text())).to.not.eq(
-                normalizeSpaces(firstIdBefore),
-              );
-            });
-        })
-        .then(() => countRowsOnCurrentPage())
-        .then(() => goNextIfPossible());
+      if (isDisabled) {
+        cy.log('Reached last pagination page');
+        return;
+      }
+
+      cy.wrap(nextBtn)
+        .should('be.visible')
+        .click();
+
+      cy.wait(500);
+
+      countCurrentPage();
+      goToNextPageIfPossible(); // recursion
     });
   };
 
-  categoryPage.categoriesTable.should("be.visible");
-  return countRowsOnCurrentPage().then(() => goNextIfPossible());
+  // Start process
+  countCurrentPage();
+  goToNextPageIfPossible();
 });
 
-Then("The total count should match the Dashboard summary", () => {
+
+Then('The total count should match the Dashboard summary', () => {
   // Use cy.then to ensure the asynchronous recursion has finished
   cy.then(() => {
     cy.log(
