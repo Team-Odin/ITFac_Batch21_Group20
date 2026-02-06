@@ -1,6 +1,8 @@
 class CategoryPage {
   get addCategoryBtn() {
-    return cy.get('a[href="/ui/categories/add"]');
+    // Prefer a resilient locator based on the visible control label.
+    // UI text may be "Add Category" or "Add A Category".
+    return cy.contains("a,button", /add\s+(a\s+)?category/i);
   }
 
   get searchNameInput() {
@@ -25,6 +27,40 @@ class CategoryPage {
 
   get categoriesTable() {
     return cy.get("table");
+  }
+
+  get paginationInfo() {
+    return cy.get(".dataTables_info, .pagination-summary"); // Adjust selector to your UI
+  }
+
+  get tableRows() {
+    return cy.get("table tbody tr");
+  }
+
+  get nextPageBtn() {
+    // Selects the 'Next' link specifically if it's not disabled
+    return cy.get("li.next:not(.disabled) a");
+  }
+
+  get sidebarCategoryLink() {
+    // Prefer the actual navigation link to the Categories page.
+    return cy
+      .get('a[href="/ui/categories"], a[href^="/ui/categories?"]')
+      .contains(/categories/i);
+  }
+
+  editBtnByNameXPath(name) {
+    return cy.xpath(`//tr[td[contains(text(), "${name}")]]//a[@title="Edit"]`);
+  }
+
+  get allEditButtons() {
+    // Selects the anchor tags that have the title "Edit"
+    return cy.get('a[title="Edit"]');
+  }
+
+  get allDeleteButtons() {
+    // Selects the anchor tags or buttons that have the title "Delete"
+    return cy.get('a[title="Delete"], button[title="Delete"]');
   }
 
   visit() {
@@ -59,8 +95,24 @@ class CategoryPage {
       });
   }
 
+  get idSortHeader() {
+    // Targets the link inside the TH specifically for ID
+    return cy.get("th").contains("a", "ID");
+  }
+
+  getTableIds() {
+    // Extracts the text from the first column (ID) of every row
+    return cy.get("table tbody tr td:first-child").then(($cells) => {
+      return Cypress._.map($cells, (el) => parseInt(el.innerText));
+    });
+  }
+
   getCategoryTableRows() {
     return cy.get("table tbody tr");
+  }
+
+  get categoryTableBody() {
+    return cy.get("table tbody");
   }
 
   getCategoryRowCount() {

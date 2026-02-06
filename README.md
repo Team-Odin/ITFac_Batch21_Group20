@@ -122,6 +122,8 @@ To ensure the database is clean after tests (and optionally before), Cypress can
 
 - `DB_RESET_ON_RUN` (default: auto-enabled for localhost DB) — reset DB on `before:run`
 - `DB_RESET_AFTER_RUN` (default: auto-enabled for localhost DB) — reset DB on `after:run`
+- `DB_RESET_BEFORE_SPEC` (default: `false`) — reset DB on `before:spec` (before each spec file)
+- `DB_RESET_AFTER_SPEC` (default: `false`) — reset DB on `after:spec` (after each spec file)
 - `DB_RESET_SQL_FILE` (default: `sql/sample_plant_data_full.sql`) — custom SQL reset file
 - `DB_RESET_ALLOW_NON_LOCAL` (default: `false`) — allow DB resets against non-local hosts (use with caution)
 
