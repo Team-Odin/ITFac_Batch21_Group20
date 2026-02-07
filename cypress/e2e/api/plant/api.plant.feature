@@ -72,7 +72,7 @@ Feature: Plant Management Module
         Given User account exists and is active
         And User is authenticated with a valid access token
         And Plant record "Rose" exists in system
-        And Endpoint: "/api/plants?name=Rose"
+        And Endpoint: "/api/plants?name=Rose" 
         When Send GET request
         Then Status Code: 200 OK
         And The response body contains an array of plant objects where the name matches the query
