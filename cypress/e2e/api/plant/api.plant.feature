@@ -63,7 +63,9 @@ Feature: Plant Management Module
 		And Any Plant exists
 		When Send PUT request to that Plant with body:
 			"""
-			{ "price": 99.99 }
+			{
+				"price": 99.99
+			}
 			"""
 		Then Status Code: 200 OK
 		And Plant details retrieved subsequently show price 99.99
@@ -74,13 +76,16 @@ Feature: Plant Management Module
 		And Any Plant exists
 		When Send PUT request to that Plant with body:
 			"""
-			{ "name": "", "price": -50 }
+			{
+				"name": "",
+				"price": -50
+			}
 			"""
 		Then Status Code: 400 Bad Request
 		And Plant validation errors include:
 			"""
-			Price must be positive
-			Name is required
+			Price must be greater than 0
+			Plant name must be between 3 and 25 characters
 			"""
 
 	@API/TC21
