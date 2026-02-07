@@ -322,43 +322,6 @@ After((info) => {
 // UI/TC01 Verify Add Category button visibility
 // =============================================================
 
-Given("I am logged in as Admin", () => {
-  loginAsAdmin();
-});
-
-Given("I am logged in as User", () => {
-  loginAsUser();
-});
-
-Given("I am on the {string} page", (url) => {
-  const page = String(JSON.stringify(url)).trim().toLowerCase();
-
-  if (
-    page === "categories" ||
-    page === "category" ||
-    page.includes("categories")
-  ) {
-    categoryPage.visitCategoryPage();
-    return;
-  }
-
-  if (
-    page === "add category" ||
-    page.includes("add category") ||
-    page.includes("add")
-  ) {
-    addCategoryPage.visitAddCategoryPage();
-    return;
-  }
-
-  if (page.startsWith("/")) {
-    cy.visit(page);
-    return;
-  }
-
-  throw new Error(`Unknown page name/path: ${JSON.stringify(url)}`);
-});
-
 // =============================================================
 // UI/TC02 Verify "Add Category" Page Navigation
 // =============================================================

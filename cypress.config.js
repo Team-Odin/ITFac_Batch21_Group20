@@ -64,9 +64,9 @@ module.exports = defineConfig({
     baseUrl: targetUrl,
     env: {
       stepDefinitions: [
+        "cypress/e2e/global.steps.{js,mjs,ts,tsx}",
         "cypress/e2e/**/[filepath].steps.{js,mjs,ts,tsx}",
         "cypress/e2e/**/[filepath]/**/*.{js,mjs,ts,tsx}",
-        "cypress/support/step_definitions/**/*.{js,mjs,ts,tsx}",
       ],
     },
 
