@@ -4,77 +4,31 @@ class PlantPage {
     return cy.contains("a", "Plants");
   }
 
-  get addPlantBtn() {
-    return cy.get('a[href="/ui/plants/add"]');
-  }
-
   get plantsTable() {
     return cy.get("table");
   }
 
-  get searchInput() {
-    return cy.get('input[placeholder="Search plant"]', { timeout: 10000 });
-  }
-
-  get searchBtn() {
-    return cy.contains("button", "Search");
-  }
-
-  get addPlantBtn() {
-    return cy.contains("Add a Plant", { timeout: 10000 }).should("be.visible");
+  visit() {
+    cy.visit("/ui/plants");
   }
 
   visitPlantPage() {
-    cy.visit("/ui/plants");
-    this.assertOnPlantsPage();
+    this.visit();
   }
 
   assertOnPlantsPage() {
-    cy.location("pathname").should("eq", "/ui/plants");
-    this.plantsTable.should("be.visible");
+    cy.location("pathname", { timeout: 10000 }).should("eq", "/ui/plants");
   }
 
   assertPlantTableHasData() {
-    cy.get("table tbody tr").should("exist").and("have.length.greaterThan", 0);
-  }
+    this.assertOnPlantsPage();
+    this.plantsTable.should("be.visible");
 
-  deletePlantIfExists(plantName) {
-    cy.get("table tbody tr").then((rows) => {
-      const row = [...rows].find((r) => r.innerText.includes(plantName));
-      if (row) {
-        cy.wrap(row).find(".delete-btn").click();
-        cy.on("window:confirm", () => true);
-      }
-    });
-  }
-
-  // ========================================
-  // API Helper Methods
-  // ========================================
-
-  static apiLoginAsAdmin() {
-    const username = Cypress.env("ADMIN_USER");
-    const password = Cypress.env("ADMIN_PASS");
-
-    if (!username || !password) {
-      throw new Error(
-        "Missing admin credentials. Set ADMIN_USER and ADMIN_PASS in your .env (or as CYPRESS_ADMIN_USER/CYPRESS_ADMIN_PASS).",
-      );
-    }
-
-    return cy
-      .request({
-        method: "POST",
-        url: "/api/auth/login",
-        body: { username, password },
-        failOnStatusCode: true,
-      })
-      .its("body")
-      .then((body) => {
-        const token = body?.token;
-        const tokenType = body?.tokenType || "Bearer";
-        if (!token) throw new Error("Login response missing token");
-        return `${tokenType} ${token}`;
+    cy.get("table tbody tr").should("exist");
+    cy.get("table tbody tr")
+      .first()
+      .within(() => {
+        cy.get("td").should("not.contain", "No plants found");
       });
   }
 
@@ -205,4 +159,3 @@ class PlantPage {
 }
 
 export const plantPage = new PlantPage();
-export default PlantPage;

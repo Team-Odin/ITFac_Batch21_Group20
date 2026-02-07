@@ -1,4 +1,9 @@
-import { Given, When, Then } from "@badeball/cypress-cucumber-preprocessor";
+import {
+  Given,
+  When,
+  Then,
+  Before,
+} from "@badeball/cypress-cucumber-preprocessor";
 import {
   loginAsAdmin,
   loginAsUser,
@@ -29,6 +34,16 @@ const safeToString = (value) => {
   } catch {
     return String(value);
   }
+};
+
+const ensurePlantExistsInList = (plantName) => {
+  const name = String(plantName);
+
+  plantPage.visitPlantPage();
+  return cy.get("table tbody").then(($tbody) => {
+    if ($tbody.text().includes(name)) return;
+    return addPlantPage.createPlantSimple(name, "100", "5");
+  });
 };
 
 const requestMainCategories = (authHeader) =>
@@ -149,53 +164,6 @@ const createPlantInCategoryViaUi = (desiredLower, categoryName) => {
   return chooseCategoryInAddPlantForm(desiredLower, categoryName).then(() =>
     submitAddPlantFormAndWait(),
   );
-};
-
-const findSelectIndexAndOptionValue = ($selects, desiredLower) => {
-  const selects = $selects.toArray();
-  if (selects.length === 0) throw new Error("No select dropdown found");
-
-  const isCategorySelect = (sel) => {
-    const id = String(sel.getAttribute("id") || "").toLowerCase();
-    const name = String(sel.getAttribute("name") || "").toLowerCase();
-    return id.includes("category") || name.includes("category");
-  };
-
-  const candidates = selects.filter(isCategorySelect);
-  const pool = candidates.length > 0 ? candidates : selects;
-
-  const getExactValue = (sel) => {
-    const options = Array.from(sel.options || []).map((o) => ({
-      value: o.value,
-      text: normalizeText(o.text),
-    }));
-    return options.find((o) => o.text.toLowerCase() === desiredLower)?.value;
-  };
-
-  const chosen = pool.find((sel) => Boolean(getExactValue(sel))) ?? pool[0];
-  const value = getExactValue(chosen);
-  if (!value) return { index: -1, value: undefined };
-
-  return { index: selects.indexOf(chosen), value: String(value) };
-};
-
-const assertHiddenOrDisabled = ($el, label) => {
-  if (!$el || $el.length === 0) return;
-
-  cy.wrap($el[0]).should(($node) => {
-    const $n = Cypress.$($node);
-    const disabledAttr =
-      $n.is(":disabled") ||
-      $n.is("[disabled]") ||
-      $n.attr("aria-disabled") === "true";
-    const className = String($n.attr("class") || "");
-    const disabledClass = className.split(/\s+/g).includes("disabled");
-
-    expect(
-      disabledAttr || disabledClass,
-      `${label} action should be hidden or disabled for non-admin`,
-    ).to.eq(true);
-  });
 };
 
 const apiLoginAsAdmin = () => {
@@ -347,6 +315,7 @@ Given("I am logged in as an Admin or Non-Admin user", () => {
 });
 
 Given("I am on the Dashboard page", () => {
+  cy.visit("/ui/dashboard");
   cy.location("pathname", { timeout: 10000 }).should("include", "/dashboard");
 });
 
@@ -396,40 +365,25 @@ Then("I should see the plant list table", () => {
 // =============================================================
 
 Then("I should see the {string} button", (/** @type {string} */ buttonText) => {
-  const text = String(buttonText).replaceAll(/\s+/g, " ").trim();
+  const expected = String(buttonText).replaceAll(/\s+/g, " ").trim();
 
-  if (/^add?\s+plant$/i.test(text)) {
+  if (/^add\s+(a\s+)?plant$/i.test(expected)) {
     return plantPage.addPlantBtn
       .should("be.visible")
       .invoke("text")
       .then((actual) => {
-        const actualNorm = normalizeText(actual);
-        expect(actualNorm.toLowerCase(), "Add Plant button text").to.match(
-          /^add?\s+plant$/i,
+        expect(plantPage.normalizeSpaces(actual).toLowerCase()).to.eq(
+          plantPage.normalizeSpaces(expected).toLowerCase(),
         );
       });
   }
 
-  cy.contains("a, button", text, { matchCase: false }).should("be.visible");
+  cy.contains("a, button", expected, { matchCase: false }).should("be.visible");
 });
 
 // =============================================================
 // UI/TC114 Verify "Add Plant" Page Navigation
 // =============================================================
-
-When("Click the {string} button", (/** @type {string} */ buttonText) => {
-  const text = String(buttonText).replaceAll(/\s+/g, " ").trim();
-
-  // TC114 uses "Add a Plant".
-  if (/^add\s+plant$/i.test(text)) {
-    plantPage.addPlantBtn.should("be.visible").click();
-    return;
-  }
-
-  cy.contains("a, button", text, { matchCase: false })
-    .should("be.visible")
-    .click();
-});
 
 Then("System redirect to {string}", (/** @type {string} */ path) => {
   cy.location("pathname", { timeout: 10000 }).should("eq", path);
@@ -449,18 +403,27 @@ When(
     const textValue = String(value);
 
     if (field.includes("plant") && field.includes("name")) {
-      addPlantPage.plantNameField.should("be.visible").clear().type(textValue);
-      return;
+      return addPlantPage
+        .nameInput()
+        .should("be.visible")
+        .clear()
+        .type(textValue);
     }
 
     if (field.includes("price")) {
-      addPlantPage.priceField.should("be.visible").clear().type(textValue);
-      return;
+      return addPlantPage
+        .priceInput()
+        .should("be.visible")
+        .clear()
+        .type(textValue);
     }
 
     if (field.includes("quantity")) {
-      addPlantPage.quantityField.should("be.visible").clear().type(textValue);
-      return;
+      return addPlantPage
+        .quantityInput()
+        .should("be.visible")
+        .clear()
+        .type(textValue);
     }
 
     throw new Error(`Unknown input field: ${fieldName}`);
@@ -482,61 +445,42 @@ When(
 
     const desired = optionText.toLowerCase();
 
-    return addPlantPage.categoryField.should("be.visible").then(($select) => {
-      const options = Array.from($select[0].options || []).map((o) => ({
-        value: o.value,
-        text: String(o.text ?? "")
-          .replaceAll(/\s+/g, " ")
-          .trim(),
-      }));
+    return addPlantPage
+      .categorySelect()
+      .should("be.visible")
+      .then(($select) => {
+        const options = Array.from($select[0].options || []).map((o) => ({
+          value: o.value,
+          text: String(o.text ?? "")
+            .replaceAll(/\s+/g, " ")
+            .trim(),
+        }));
 
-      const match = options.find((o) => o.text.toLowerCase() === desired);
-      const fallback = options.find((o) => o.value && o.text);
-      const toSelect = match?.value || fallback?.value;
+        const match = options.find((o) => o.text.toLowerCase() === desired);
+        const fallback = options.find((o) => o.value && o.text);
+        const toSelect = match?.value || fallback?.value;
 
-      if (!toSelect) {
-        throw new Error(
-          `No selectable Category option found for '${optionText}'`,
-        );
-      }
+        if (!toSelect) {
+          throw new Error(
+            `No selectable Category option found for '${optionText}'`,
+          );
+        }
 
-      return cy.wrap($select).select(toSelect);
-    });
+        return cy.wrap($select).select(toSelect);
+      });
   },
 );
 
-When("Click {string} button", (/** @type {string} */ buttonText) => {
-  const requested = String(buttonText)
-    .replaceAll(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-
-  if (requested === "save") {
-    // App markup isn't guaranteed to use type="submit".
-    return cy
-      .contains('button, input[type="submit"], a', /^save$/i)
-      .should("be.visible")
-      .click();
-  }
-
-  return cy
-    .contains("button, a", requested, { matchCase: false })
-    .should("be.visible")
-    .click();
-});
-
 Then("System redirects to the plant list", () => {
-  cy.location("pathname", { timeout: 10000 }).should("eq", "/ui/plants");
+  plantPage.assertOnPlantsPage();
 });
 
 Then(
   "{string} appears in the plant table",
   (/** @type {string} */ plantName) => {
     const name = String(plantName);
-    plantPage.plantsTable.should("be.visible");
-    cy.get("table").within(() => {
-      cy.contains("td", name, { timeout: 10000 }).should("be.visible");
-    });
+    plantPage.assertPlantsTableVisible();
+    cy.contains("table td", name, { timeout: 10000 }).should("be.visible");
   },
 );
 
@@ -545,10 +489,8 @@ Then("Show {string} message", (/** @type {string} */ successMessage) => {
 
   // TC120 uses an empty-state row inside the table.
   if (/^no\s+plants\s+found$/i.test(message.trim())) {
-    plantPage.plantsTable.should("be.visible").should("contain.text", message);
-    return;
+    return plantPage.assertNoPlantsFoundMessage(message);
   }
-
 
   if (/plant\s+created\s+successfully/i.test(message.trim())) {
     return cy.get("body").then(($body) => {
@@ -620,9 +562,9 @@ When("Click the {string} pagination button", (label) => {
 
 Then("The next set of plants should be displayed", () => {
   expect(plantPageRowsSnapshot, "initial rows snapshot").to.exist;
-  plantPage.plantsTable.should("be.visible");
+  plantPage.assertPlantsTableVisible();
 
-  captureTopRowsSnapshot(3).should((current) => {
+  plantPage.captureTopRowsSnapshot(3).should((current) => {
     expect(
       current,
       "rows snapshot changed after clicking Next",
@@ -645,83 +587,17 @@ When("Select {string} from category filter", (categoryName) => {
     .then(() => {
       plantPage.visitPlantPage();
       plantPage.assertOnPlantsPage();
-      plantPage.plantsTable.should("be.visible");
-
-      // Find a category filter dropdown on the Plants page.
-      return cy.get("select").then(($selects) => {
-        const desired = selectedPlantCategoryFilterName.toLowerCase();
-
-        const { index: chosenIndex, value } = findSelectIndexAndOptionValue(
-          $selects,
-          desired,
-        );
-        if (chosenIndex < 0 || !value) {
-          throw new Error(
-            `Category filter does not contain option '${selectedPlantCategoryFilterName}'`,
-          );
-        }
-
-        // Re-query by index so Cypress has a real <select> subject.
-        return cy
-          .get("select")
-          .eq(chosenIndex)
-          .should("be.visible")
-          .select(value, { force: true });
-      });
+      plantPage.assertPlantsTableVisible();
+      return plantPage.selectCategoryFilter(selectedPlantCategoryFilterName);
     });
 });
 
 Then(
   "Only plants under {string} category should be displayed",
   (categoryName) => {
-    const expected = normalizeText(safeToString(categoryName));
-    const expectedLower = expected.toLowerCase();
-
     plantPage.assertOnPlantsPage();
-    plantPage.plantsTable.should("be.visible");
-
-    // Determine which column is "Category" then assert rows (retryable).
-    cy.get("table thead tr th")
-      .then(($ths) => {
-        const headers = Array.from($ths).map((th) =>
-          normalizeText(th.innerText).toLowerCase(),
-        );
-        plantCategoryColumnIndex = headers.findIndex((h) =>
-          h.includes("category"),
-        );
-      })
-      .then(() => {
-        return cy.get("table tbody tr").should(($rows) => {
-          const dataRows = Array.from($rows).filter(
-            (row) => Cypress.$(row).find("td[colspan]").length === 0,
-          );
-
-          expect(dataRows.length, "rows after filtering").to.be.greaterThan(0);
-
-          dataRows.forEach((row) => {
-            const $tds = Cypress.$(row).find("td");
-            if ($tds.length === 0) return;
-
-            const idx = Number.isInteger(plantCategoryColumnIndex)
-              ? plantCategoryColumnIndex
-              : -1;
-
-            // If we can't locate the category column, fall back to checking the whole row text.
-            if (idx < 0 || idx >= $tds.length) {
-              const rowText = normalizeText(
-                Cypress.$(row).text(),
-              ).toLowerCase();
-              expect(rowText).to.include(expectedLower);
-              return;
-            }
-
-            const cellText = normalizeText(
-              Cypress.$($tds[idx]).text(),
-            ).toLowerCase();
-            expect(cellText).to.include(expectedLower);
-          });
-        });
-      });
+    plantPage.assertPlantsTableVisible();
+    return plantPage.assertOnlyRowsMatchCategory(categoryName);
   },
 );
 
@@ -739,40 +615,13 @@ When("Enter {string} in search field", (searchText) => {
   plantSearchText = text;
 
   plantPage.assertOnPlantsPage();
-
-  // Keep it minimal + robust: only target clearable visible text/search inputs.
-  return cy
-    .get(
-      'input:not([type]), input[type="text"], input[type="search"], textarea',
-    )
-    .filter(":visible")
-    .first()
-    .should("be.visible")
-    .clear({ force: true })
-    .type(text, { force: true });
+  return plantPage.searchByName(text);
 });
 
 Then("Matching plants should be displayed in the table", () => {
   plantPage.assertOnPlantsPage();
-  plantPage.plantsTable.should("be.visible");
-
-  const expected = normalizeText(plantSearchText || "");
-
-  cy.get("table tbody tr").should(($rows) => {
-    const dataRows = Array.from($rows).filter(
-      (row) => Cypress.$(row).find("td[colspan]").length === 0,
-    );
-
-    expect(dataRows.length, "rows after search").to.be.greaterThan(0);
-
-    if (expected) {
-      const expectedLower = expected.toLowerCase();
-      dataRows.forEach((row) => {
-        const rowText = normalizeText(Cypress.$(row).text()).toLowerCase();
-        expect(rowText).to.include(expectedLower);
-      });
-    }
-  });
+  plantPage.assertPlantsTableVisible();
+  return plantPage.assertOnlyRowsContainText(plantSearchText || "");
 });
 
 // =============================================================
@@ -782,42 +631,7 @@ Then("Matching plants should be displayed in the table", () => {
 Then(
   "I should not see {string} and {string} buttons",
   (editLabel, deleteLabel) => {
-    const wantEdit = normalizeText(
-      safeToString(editLabel || "edit"),
-    ).toLowerCase();
-    const wantDelete = normalizeText(
-      safeToString(deleteLabel || "delete"),
-    ).toLowerCase();
-
-    plantPage.assertOnPlantsPage();
-    plantPage.plantsTable.should("be.visible");
-
-    cy.get("table thead tr th").then(($ths) => {
-      const headers = Array.from($ths).map((th) =>
-        normalizeText(th.innerText).toLowerCase(),
-      );
-      const actionsIdx = headers.findIndex((h) => h.includes("actions"));
-
-      cy.get("table tbody tr").each(($row) => {
-        const $tds = Cypress.$($row).find("td");
-        if ($tds.length === 0) return;
-        if ($tds.length === 1 && Cypress.$($tds[0]).attr("colspan")) return;
-
-        const idx = actionsIdx >= 0 ? actionsIdx : $tds.length - 1;
-        const $cell = Cypress.$($tds[idx]);
-
-        const $edit = $cell.find(
-          'a[title="Edit"], a[href*="/ui/plants/edit"], button[title="Edit"]',
-        );
-        const $del = $cell.find(
-          'button[title="Delete"], a[title="Delete"], form[action*="/ui/plants/delete"] button',
-        );
-
-        if (wantEdit.includes("edit")) assertHiddenOrDisabled($edit, "Edit");
-        if (wantDelete.includes("delete"))
-          assertHiddenOrDisabled($del, "Delete");
-      });
-    });
+    plantPage.assertActionsHiddenForNonAdmin(editLabel, deleteLabel);
   },
 );
 
@@ -936,69 +750,7 @@ When("Plant quantity is less than {int}", (threshold) => {
 });
 
 Then("I should see the {string} badge", (badgeText) => {
-  const expected = normalizeText(safeToString(badgeText));
-  const expectedLower = expected.toLowerCase();
-  const acceptedBadgeLabels =
-    expectedLower === "low stock" ? ["low stock", "low"] : [expectedLower];
-
-  const threshold = Number.isFinite(lowStockThreshold) ? lowStockThreshold : 5;
-
-  plantPage.assertOnPlantsPage();
-  plantPage.plantsTable.should("be.visible");
-
-  const escapeRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const badgeRegex = new RegExp(
-    acceptedBadgeLabels.map(escapeRegExp).join("|"),
-    "i",
-  );
-
-  // Primary assertion: badge text is visible somewhere in the table.
-  // (This matches the feature intent and avoids brittle column-index parsing.)
-  cy.contains("table", badgeRegex).should("be.visible");
-
-  cy.get("table tbody tr").then(($rows) => {
-    const rows = Array.from($rows);
-    const idx =
-      Number.isInteger(plantStockColumnIndex) && plantStockColumnIndex >= 0
-        ? plantStockColumnIndex
-        : 3; // fallback: 4th column
-
-    let lowStockRowsFound = 0;
-    let rowsWithBadgeFound = 0;
-
-    for (const row of rows) {
-      const $row = Cypress.$(row);
-      const $cells = $row.find("td");
-
-      if ($cells.length === 0) continue;
-      if ($cells.length === 1 && $cells.eq(0).attr("colspan")) continue;
-      if (idx >= $cells.length) continue;
-
-      const rawQty = normalizeText($cells.eq(idx).text());
-      const qty = Number.parseInt(rawQty.replaceAll(/[^0-9-]/g, ""), 10);
-      if (!Number.isFinite(qty) || qty >= threshold) continue;
-
-      lowStockRowsFound += 1;
-
-      // Prefer badge text in the column(s) after the quantity column.
-      const $tailCells = $cells.slice(Math.min(idx + 1, $cells.length - 1));
-      const tailText = normalizeText($tailCells.text()).toLowerCase();
-
-      if (acceptedBadgeLabels.some((label) => tailText.includes(label))) {
-        rowsWithBadgeFound += 1;
-      }
-    }
-
-    // Keep the stricter checks as best-effort diagnostics. If the table structure
-    // doesn't allow reliable quantity parsing, don't fail as long as the badge
-    // is visible.
-    if (lowStockRowsFound > 0) {
-      expect(
-        rowsWithBadgeFound,
-        `Expected badge '${expected}' (accepted: ${acceptedBadgeLabels.join(", ")}) on low-stock rows`,
-      ).to.be.greaterThan(0);
-    }
-  });
+  plantPage.assertBadgeVisible(badgeText);
 });
 
 // =============================================================
@@ -1009,7 +761,6 @@ Then(
   "the {string} navigation menu item should be highlighted",
   (/** @type {string} */ menuName) => {
     const menu = normalizeText(safeToString(menuName)).toLowerCase();
-
     if (menu !== "plants" && menu !== "plant") {
       throw new Error(
         `Unknown navigation menu item: ${safeToString(menuName)}`,
@@ -1017,67 +768,15 @@ Then(
     }
 
     cy.location("pathname", { timeout: 10000 }).should("eq", "/ui/plants");
+    plantPage.plantsMenu.should("be.visible").then(($link) => {
+      const $li = $link.closest("li");
+      if ($li.length) {
+        cy.wrap($li).should("have.class", "active");
+        return;
+      }
 
-    const navLinkSelector =
-      "nav a, aside a, header a, [role='navigation'] a, .sidebar a, .nav a";
-
-    return cy
-      .contains(navLinkSelector, /^\s*plants\s*$/i)
-      .should("be.visible")
-      .then(($a) => {
-        /** @param {JQuery<HTMLElement>} $el */
-        const classList = ($el) =>
-          normalizeText($el.attr("class"))
-            .toLowerCase()
-            .split(/\s+/g)
-            .filter(Boolean);
-
-        const activeTokens = new Set([
-          "active",
-          "is-active",
-          "selected",
-          "is-selected",
-          "current",
-          "router-link-active",
-          "router-link-exact-active",
-          "mui-selected",
-          "ant-menu-item-selected",
-        ]);
-
-        const $li = $a.closest("li");
-        const $parent = $a.parent();
-        const $activeAncestor = $a.closest(
-          "[aria-current],[aria-selected],.active,.selected,.current",
-        );
-
-        const ariaCurrent = String(
-          $a.attr("aria-current") || $activeAncestor.attr("aria-current") || "",
-        ).toLowerCase();
-        const ariaSelected = String(
-          $a.attr("aria-selected") ||
-            $activeAncestor.attr("aria-selected") ||
-            "",
-        ).toLowerCase();
-
-        const candidates = [$a, $li, $parent, $activeAncestor].filter(
-          (x) => x && x.length > 0,
-        );
-
-        const hasActiveClass = candidates.some(($el) =>
-          classList($el).some((cls) => activeTokens.has(cls)),
-        );
-
-        const isActive =
-          ariaCurrent === "page" ||
-          ariaCurrent === "true" ||
-          ariaSelected === "true" ||
-          hasActiveClass;
-
-        expect(
-          isActive,
-          `Expected 'Plants' nav item to be highlighted. aria-current='${ariaCurrent}', aria-selected='${ariaSelected}', classes='${classList($a).join(" ")}', liClasses='${classList($li).join(" ")}'`,
-        ).to.eq(true);
-      });
+      cy.wrap($link).should("have.class", "active");
+    });
   },
 );
 
@@ -1096,448 +795,3 @@ Then("I should be on the {string} page", (/** @type {string} */ pageName) => {
 
   throw new Error(`Unknown page: ${safeToString(pageName)}`);
 });
-
-let createdPlantName;
-let initialRowCount;
-let selectedPlantRow;
-
-// =====================
-// Hooks
-// =====================
-Before((info) => {
-  cy.log(`Running Scenario: ${info.pickle.name}`);
-});
-
-// =====================
-// Given steps
-// =====================
-Given("The application is running", () => {
-  cy.visit("/ui/login");
-  cy.location("pathname").should("include", "/ui");
-});
-
-Given("I am logged in as {string}", (role) => {
-  if (role === "Admin") loginAsAdmin();
-  if (role === "Standard User") loginAsUser();
-});
-
-Given("Plants exist in the Plant list", () => {
-  plantPage.visitPlantPage();
-  plantPage.assertPlantTableHasData();
-
-  cy.get("table tbody tr").then((rows) => {
-    initialRowCount = rows.length;
-  });
-});
-
-Given("I am on the {string} page", (pageName) => {
-  if (pageName === "Plants") plantPage.visitPlantPage();
-  if (pageName === "Add Plant") addPlantPage.visitAddPlantPage();
-});
-
-Given("A plant named {string} exists in the list", (plantName) => {
-  // Wait for table to be visible
-  cy.get("table tbody").should("be.visible");
-
-  // Wait for the row containing the plant name
-  cy.get("table tbody tr")
-    .contains("td", plantName, { timeout: 10000 }) // give up to 10s for the plant to appear
-    .should("be.visible")
-    .then(($cell) => {
-      // Wrap the row for future actions
-      selectedPlantRow = cy.wrap($cell).parent("tr");
-    });
-});
-
-// =====================
-// When steps
-// =====================
-When("I enter {string} in the search input field", (text) => {
-  plantPage.searchInput.clear().type(text);
-});
-
-When(
-  "I enter {string} in the search input field with a trailing space",
-  (text) => {
-    plantPage.searchInput.clear().type(`${text} `);
-  },
-);
-
-When('Click the "Search" button', () => {
-  plantPage.searchBtn.click();
-});
-
-When('Click the "Add a Plant" button', () => {
-  plantPage.addPlantBtn.click();
-});
-
-When(
-  "I enter plant details with name {string} and price {string} stock {string}",
-  (plantName, price, stockQty) => {
-    createdPlantName = plantName;
-
-    addPlantPage.nameInput().clear().type(plantName);
-    addPlantPage.categorySelect().select(1);
-    addPlantPage.priceInput().clear().type(price);
-    addPlantPage.quantityInput().should("be.visible").clear().type(stockQty);
-  },
-);
-
-When(
-  "I enter plant details with name {string} and stock {string}",
-  (plantName, stockQty) => {
-    createdPlantName = plantName;
-
-    addPlantPage.nameInput().clear().type(plantName);
-    addPlantPage.categorySelect().select(1);
-    addPlantPage.quantityInput().should("be.visible").clear().type(stockQty);
-  },
-);
-
-When('Click the "Save" button', () => {
-  addPlantPage.saveButton().click();
-});
-
-When('Click the "Cancel" button', () => {
-  cy.contains("button, a", /cancel/i, { timeout: 10000 })
-    .should("be.visible")
-    .click({ force: true });
-});
-
-When('Click the "Category" dropdown', () => {
-  addPlantPage.categorySelect().then(($el) => {
-    if ($el.is("select")) {
-      cy.wrap($el).should("be.visible");
-    } else {
-      cy.wrap($el).should("be.visible").click();
-    }
-  });
-});
-
-When('Inspect the "Actions" column for the {string} row', (plantName) => {
-  cy.get("table tbody tr")
-    .contains("td", plantName)
-    .then(($row) => {
-      selectedPlantRow = cy.wrap($row).parent("tr");
-    });
-});
-
-// =====================
-// Edit Plant Steps
-// =====================
-
-When('Click the "Edit" button on a plant row', () => {
-  cy.get("table tbody tr")
-    .contains("td", "Banana")
-    .parent("tr")
-    .within(() => {
-      cy.get('a.btn-outline-primary[title="Edit"]')
-        .should("exist")
-        .click({ force: true });
-    });
-
-  // Wait for navigation to edit page
-  cy.url().should("include", "/ui/plants/edit/", { timeout: 10000 });
-
-  // Wait for the form to be visible
-  cy.get("form", { timeout: 10000 }).should("be.visible");
-});
-
-When('Update the "Name" field to {string}', (newName) => {
-  cy.get('input[name="name"]', { timeout: 5000 })
-    .should("be.visible")
-    .clear()
-    .type(newName);
-});
-
-// Click Edit button on a specific plant row
-When('Click the "Edit" button on the {string} row', (plantName) => {
-  cy.get("table tbody tr")
-    .contains("td", plantName)
-    .parent("tr")
-    .within(() => {
-      cy.get('a.btn-outline-primary[title="Edit"]')
-        .should("exist")
-        .click({ force: true });
-    });
-
-  // Wait for navigation to edit page
-  cy.url().should("include", "/ui/plants/edit/", { timeout: 10000 });
-
-  // Wait for the form to be visible (without specific ID requirement)
-  cy.get("form", { timeout: 10000 }).should("be.visible");
-});
-
-// Update Category field
-When('Update the "Category" field to {string}', (category) => {
-  cy.get('select[name="categoryId"]', { timeout: 5000 })
-    .should("be.visible")
-    .select(category);
-});
-
-// Click Save button inside edit form
-When('Click the "Save" button in modal', () => {
-  cy.get('button[type="submit"]').should("be.visible").click();
-});
-
-When('Click the "Delete" button on a {string} row', (plantName) => {
-  cy.get("table tbody tr")
-    .contains("td", plantName)
-    .parent("tr")
-    .within(() => {
-      cy.get('button[title="Delete"]')
-        .scrollIntoView()
-        .should("exist")
-        .click({ force: true });
-    });
-});
-
-When("Confirm the deletion on the popup", () => {
-  cy.on("window:confirm", () => true);
-});
-
-When("Cancel the deletion on the popup", () => {
-  cy.on("window:confirm", () => false);
-});
-
-When("Click on the {string} link in the navigation menu", (link) => {
-  const name = link.toLowerCase();
-
-  if (name === "plants") {
-    plantPage.plantsMenu.should("be.visible").click();
-    return;
-  }
-
-  throw new Error(`Unknown navigation link: ${link}`);
-});
-
-When("Scroll to the bottom of the plant list table", () => {
-  plantPage.plantsTable.scrollIntoView().then(() => {
-    cy.get("table tbody tr", { timeout: 10000 }).should("exist");
-  });
-});
-When('Click on the "Next" page button', () => {
-  // Assuming pagination buttons have class 'pagination' or a button labeled "Next"
-  cy.get(".pagination").contains("Next").should("be.visible").click();
-});
-
-When('I click the "Name" column header once', () => {
-  cy.get("table thead tr th").contains("Name").should("be.visible").click();
-});
-
-When('I click the "Name" column header twice', () => {
-  cy.get("table thead tr th")
-    .contains("Name")
-    .should("be.visible")
-    .click()
-    .click(); // second click
-});
-
-When("Select {string} from the Category dropdown", (category) => {
-  cy.get('select[name="categoryId"]', { timeout: 5000 }).then(($select) => {
-    if ($select.length > 0) {
-      cy.wrap($select).should("be.visible").select(category);
-    } else {
-      cy.get(".ant-select", { timeout: 5000 }).first().click();
-      cy.get(".ant-select-item-option", { timeout: 5000 })
-        .contains(category)
-        .click();
-    }
-  });
-});
-
-// =====================
-// Then steps
-// =====================
-Then(
-  "The plant list should display only matching plants based on {string}",
-  (expectedText) => {
-    cy.get("table tbody tr")
-      .should("have.length.greaterThan", 0)
-      .and("have.length.at.most", initialRowCount);
-
-    cy.get("table tbody tr").each(($row) => {
-      cy.wrap($row)
-        .find("td")
-        .first()
-        .invoke("text")
-        .should("match", new RegExp(expectedText, "i"));
-    });
-  },
-);
-
-Then("The plant list is refreshed", () => {
-  cy.visit("/ui/plants");
-  cy.get("table", { timeout: 10000 }).should("be.visible");
-
-  cy.get("table tbody tr", { timeout: 10000 })
-    .contains(createdPlantName)
-    .should("be.visible");
-});
-
-Then('The "Low" stock badge is displayed for {string}', (plantName) => {
-  cy.get("table tbody tr")
-    .contains("td", plantName)
-    .parent("tr")
-    .within(() => {
-      cy.get(".badge, .ant-badge, span").contains("Low").should("be.visible");
-    });
-});
-
-Then('The "Edit" icon is visible for {string}', (plantName) => {
-  cy.get("table tbody tr")
-    .contains("td", plantName)
-    .parent("tr")
-    .within(() => {
-      cy.get('a.btn-outline-primary[title="Edit"]').should("exist");
-    });
-});
-
-Then('The "Delete" icon is visible for {string}', (plantName) => {
-  cy.get("table tbody tr")
-    .contains("td", plantName)
-    .parent("tr")
-    .within(() => {
-      cy.get('button.btn-outline-danger[title="Delete"]').should("be.visible");
-    });
-});
-
-Then("The system redirects to the Plant list", () => {
-  cy.url().should("include", "/ui/plants");
-  cy.get("table tbody tr").should("have.length.greaterThan", 0);
-});
-
-Then(
-  "The system navigates back to the Plant list page {string}",
-  (expectedUrl) => {
-    cy.url().should("include", expectedUrl);
-    cy.get("table tbody tr").should("have.length.greaterThan", 0);
-  },
-);
-
-Then("The plant table displays the name {string}", (plantName) => {
-  cy.get("table tbody tr", { timeout: 10000 })
-    .contains("td", plantName)
-    .should("be.visible");
-});
-
-Then(
-  "The plant table displays the category {string} for {string}",
-  (category, plantName) => {
-    cy.get("table tbody tr")
-      .contains("td", plantName)
-      .parent("tr")
-      .within(() => {
-        cy.get("td").eq(1).invoke("text").should("eq", category);
-      });
-  },
-);
-
-Then(
-  "The plant named {string} should be removed from the list",
-  (plantName) => {
-    cy.get("table tbody").should("be.visible");
-
-    // Verify the plant row no longer exists
-    cy.get("table tbody tr").contains("td", plantName).should("not.exist");
-  },
-);
-
-Then("Only sub-categories are listed in the dropdown", () => {
-  addPlantPage
-    .categorySelect()
-    .should("be.visible")
-    .find("option")
-    .then(($options) => {
-      const uiCategories = [...$options]
-        .map((o) => o.innerText.trim())
-        .filter((t) => t !== "" && t !== "Select Category");
-
-      cy.log("UI Categories:", uiCategories);
-
-      // ❗ Correct validation:
-      // Parent categories like "All / Root / Main" should NOT exist
-      const parentKeywords = ["	Outdoor", "Indoor", "Anthurium", "T2184402"];
-
-      uiCategories.forEach((cat) => {
-        parentKeywords.forEach((word) => {
-          expect(cat).to.not.include(word);
-        });
-      });
-
-      // At least one sub category must be shown
-      expect(uiCategories.length).to.be.greaterThan(0);
-    });
-});
-
-// Display Plant List Page for non admin user
-Then("The system redirects to the Plant list page", () => {
-  cy.url().should("include", "/ui/plants");
-
-  cy.get("table", { timeout: 10000 }).should("be.visible");
-
-  cy.get("table tbody tr").should("have.length.greaterThan", 0);
-});
-Then("The plant list table is displayed", () => {
-  cy.get("table", { timeout: 10000 }).should("be.visible");
-  cy.get("table tbody tr").should("have.length.greaterThan", 0);
-});
-
-Then('The "Add a Plant" button is NOT visible', () => {
-  cy.contains("button", "Add a Plant", { timeout: 0 }).should("not.exist");
-});
-
-Then('The active page indicator highlights "2"', () => {
-  // Assuming active page has class "active" or "ant-pagination-item-active"
-  cy.get(".pagination").contains("2").parent().should("have.class", "active");
-});
-
-Then("The column is sorted {string}", (direction) => {
-  cy.get("table tbody tr", { timeout: 10000 }).should(
-    "have.length.greaterThan",
-    0,
-  );
-
-  cy.get("table tbody tr td:first-child").then(($cells) => {
-    const names = $cells
-      .map((i, el) =>
-        el.innerText
-          .replace(/[\u200B-\u200D\uFEFF]/g, "") // remove zero-width chars
-          .replace(/\s+/g, " ") // collapse spaces
-          .replace(/[^a-zA-Z0-9 ]/g, "") // remove special chars/icons
-          .trim()
-          .toLowerCase(),
-      )
-      .get();
-
-    cy.log("Names in table:", JSON.stringify(names));
-
-    const sortedNames = [...names].sort((a, b) => a.localeCompare(b));
-
-    if (direction === "ascending") {
-      expect(names, "Check ascending sort").to.deep.equal(sortedNames);
-    } else if (direction === "descending") {
-      expect(names, "Check descending sort").to.deep.equal(
-        [...sortedNames].reverse(),
-      );
-    }
-  });
-});
-
-Then(
-  "The plant list should display only plants with category {string}",
-  (category) => {
-    cy.get("table tbody tr", { timeout: 10000 }).should(
-      "have.length.greaterThan",
-      0,
-    );
-
-    cy.get("table tbody tr").each(($row) => {
-      cy.wrap($row)
-        .find("td")
-        .eq(1) // second column
-        .invoke("text")
-        .should("eq", category);
-    });
-  },
-);

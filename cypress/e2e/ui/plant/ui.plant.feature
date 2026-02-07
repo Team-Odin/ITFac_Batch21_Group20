@@ -2,7 +2,7 @@
 Feature: Plant Management Module
     As an admin or user
     I want to manage plants
-    So that I can organize the inventory
+    So that I can organize plants in the system
 
     @UI/TC112
     Scenario: UI/TC112 Verify Plant List page visibility
@@ -92,10 +92,7 @@ Feature: Plant Management Module
         When I click the "Plants" menu
         Then the "Plants" navigation menu item should be highlighted
         And I should be on the "Plants" page
-
- 
         
-
     @UI/TC133
     Scenario: Verify Search plants list by Plant Name as an admin
         Given I am logged in as "Admin"
@@ -220,3 +217,4 @@ Feature: Plant Management Module
         When Select "Cactus" from the Category dropdown
         And Click the "Search" button
         Then The plant list should display only plants with category "Cactus"
+        And I should be on the "Plants" page

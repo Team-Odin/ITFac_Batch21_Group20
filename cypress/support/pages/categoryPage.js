@@ -33,10 +33,6 @@ class CategoryPage {
     return cy.get('select[name="parentId"]');
   }
 
-  get nextPageBtn() {
-    return cy.contains("a", "Next");
-  }
-
   get categoriesTable() {
     return cy.get("table");
   }

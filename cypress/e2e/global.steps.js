@@ -1,4 +1,9 @@
-import { Given, Before, After } from "@badeball/cypress-cucumber-preprocessor";
+import {
+  Given,
+  When,
+  Before,
+  After,
+} from "@badeball/cypress-cucumber-preprocessor";
 
 import { loginAsAdmin, loginAsUser } from "./preconditions/login.preconditions";
 
@@ -68,6 +73,12 @@ Given("I am on the {string} page", (/** @type {string} */ pageName) => {
     return;
   }
 
+  if (page === "dashboard" || page.includes("dashboard")) {
+    cy.visit("/ui/dashboard");
+    cy.location("pathname", { timeout: 10000 }).should("include", "/dashboard");
+    return;
+  }
+
   if (
     page === "add plant" ||
     page === "add a plant" ||
@@ -84,4 +95,54 @@ Given("I am on the {string} page", (/** @type {string} */ pageName) => {
   }
 
   throw new Error(`Unknown page name/path: ${JSON.stringify(pageName)}`);
+});
+
+const normalizeButton = (value) =>
+  String(value ?? "")
+    .replaceAll(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+const clickCategoryButton = (label) => {
+  if (label === "save" || label === "cancel")
+    return addCategoryPage.clickControl(label);
+
+  return categoryPage.clickControl(label);
+};
+
+const clickPlantButton = (label) => {
+  if (label === "save") return addPlantPage.clickSave();
+  if (label === "cancel") return addPlantPage.clickCancel();
+  if (label === "search")
+    return plantPage.searchBtn.should("be.visible").click();
+  if (label.includes("add") && label.includes("plant"))
+    return plantPage.clickAddPlantButton();
+
+  return cy
+    .contains("button, a", new RegExp(`^${label}$`, "i"))
+    .should("be.visible")
+    .click();
+};
+
+const clickButtonByContext = (buttonText) => {
+  const label = normalizeButton(buttonText);
+
+  return cy.location("pathname").then((pathname) => {
+    if (pathname.startsWith("/ui/categories"))
+      return clickCategoryButton(label);
+    if (pathname.startsWith("/ui/plants")) return clickPlantButton(label);
+
+    return cy
+      .contains("button, a", new RegExp(`^${label}$`, "i"))
+      .should("be.visible")
+      .click();
+  });
+};
+
+When("Click the {string} button", (buttonText) => {
+  return clickButtonByContext(buttonText);
+});
+
+When("Click {string} button", (buttonText) => {
+  return clickButtonByContext(buttonText);
 });
