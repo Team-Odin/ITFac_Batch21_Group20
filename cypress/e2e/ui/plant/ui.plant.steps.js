@@ -338,8 +338,6 @@ Given("I am logged in as an Admin or Non-Admin user", () => {
   const userUser = Cypress.env("USER_USER");
   const userPass = Cypress.env("USER_PASS");
 
-  // Prefer admin to keep this precondition stable across environments.
-  // If non-admin creds are available, either role is acceptable for this scenario.
   if (userUser && userPass) {
     loginAsUser();
     return;
@@ -551,8 +549,7 @@ Then("Show {string} message", (/** @type {string} */ successMessage) => {
     return;
   }
 
-  // Some app builds don't render toast/alert messages for create flows.
-  // Make this assertion best-effort to avoid false negatives.
+
   if (/plant\s+created\s+successfully/i.test(message.trim())) {
     return cy.get("body").then(($body) => {
       const bodyText = normalizeText($body.text()).toLowerCase();
@@ -837,12 +834,6 @@ When("Plant quantity is less than {int}", (threshold) => {
 
   const desiredQty = Math.max(0, thresholdNum - 1);
 
-  // Ensure test data contains at least one low-stock plant.
-  // Non-admin UI can't create/update plants, so we do a best-effort admin API update.
-  // IMPORTANT: pick a plant that's visible on the current page.
-  // Some app builds render the table server-side (no XHR we can reliably wait for),
-  // so we select a visible plant name from the DOM and update that exact plant via API.
-
   plantPage.assertOnPlantsPage();
   plantPage.plantsTable.should("be.visible");
 
@@ -1025,11 +1016,6 @@ Then(
       );
     }
 
-    // This test must validate the UI highlight state (not just URL).
-    // We consider the menu item highlighted if we can observe a standard active marker:
-    // - aria-current="page" (preferred)
-    // - aria-selected="true"
-    // - common active/selected CSS class names on the link or a nearby wrapper element
     cy.location("pathname", { timeout: 10000 }).should("eq", "/ui/plants");
 
     const navLinkSelector =
