@@ -15,6 +15,8 @@ let createdPlantName;
 let createdPlantIdsForTc17;
 let userAuthHeader;
 let searchQuery;
+let userToken;
+let apiResponse;
 
 // Helper function to ensure a category exists
 function ensureCategoryExists(categoryId) {
@@ -757,6 +759,157 @@ Then(
     );
   },
 );
+
+// =============================================================
+// API/TC20 Verify non-admin user cannot delete a plant
+// =============================================================
+
+Given("a non-admin user is authenticated", () => {
+  return PlantPage.apiLoginAsNonAdmin().then((token) => {
+    userToken = token;
+    plantPage.setAuthHeader(token);
+  });
+});
+
+When("the user attempts to delete a plant with ID {string}", (plantId) => {
+  if (!userToken) {
+    throw new Error(
+      "Missing userToken; run non-admin authentication step first",
+    );
+  }
+
+  return plantPage.deletePlant(plantId, userToken).then((res) => {
+    apiResponse = res;
+  });
+});
+
+Then("the API should return a 403 Forbidden status", () => {
+  expect(apiResponse, "apiResponse should exist").to.exist;
+  expect(apiResponse.status).to.eq(403);
+});
+
+Then("the delete action should be blocked at the server level", () => {
+  if (!userToken) {
+    throw new Error("Missing userToken");
+  }
+
+  return plantPage.getPlant("9", userToken).then((res) => {
+    expect(res.status).to.eq(200);
+    expect(res.body.id).to.eq(9);
+    cy.log("✓ Plant still exists after failed delete attempt");
+  });
+});
+
+// =============================================================
+// API/TC21 Verify non-admin user cannot edit a plant
+// =============================================================
+
+When(
+  "the user attempts to update plant {string} with the specific string body",
+  (id) => {
+    if (!userToken) {
+      throw new Error(
+        "Missing userToken; run non-admin authentication step first",
+      );
+    }
+
+    return plantPage.updatePlantStrictBody(id, userToken).then((res) => {
+      apiResponse = res;
+    });
+  },
+);
+
+Then("the API returns HTTP 403 Forbidden for the update", () => {
+  expect(apiResponse, "apiResponse should exist").to.exist;
+  expect(apiResponse.status).to.eq(
+    403,
+    `Expected 403 but got ${apiResponse.status}`,
+  );
+});
+
+Then("the update is blocked at the server level", () => {
+  if (!userToken) {
+    throw new Error("Missing userToken");
+  }
+
+  return plantPage.getPlant("9", userToken).then((res) => {
+    expect(res.body.name).to.not.eq("updateName");
+    cy.log("✓ Plant data was not modified after failed update attempt");
+  });
+});
+
+// =============================================================
+// API/TC22 Verify "No plants found" returns empty list and valid pagination metadata
+// =============================================================
+
+When(
+  "the user searches for plants with name {string} and category {string}",
+  (name, catId) => {
+    if (!userToken) {
+      throw new Error(
+        "Missing userToken; run non-admin authentication step first",
+      );
+    }
+
+    return plantPage
+      .searchPlants(name, catId, userToken, 0, 1)
+      .then((response) => {
+        apiResponse = response;
+      });
+  },
+);
+
+Then("the API returns HTTP 200 OK for the search", () => {
+  expect(apiResponse, "apiResponse should exist").to.exist;
+  expect(apiResponse.status).to.eq(200);
+});
+
+Then("the response should be a valid empty paginated object", () => {
+  const body = apiResponse.body;
+
+  expect(body.content).to.be.an("array").and.empty;
+
+  expect(body.totalElements).to.eq(0);
+  expect(body.numberOfElements).to.eq(0);
+  expect(body.empty).to.be.true;
+
+  expect(body.pageable.pageSize).to.eq(1);
+  expect(body.pageable.pageNumber).to.eq(0);
+
+  cy.log(
+    "✓ TC22 Passed: Verified 200 OK and fully empty Spring Data page object.",
+  );
+});
+
+// =============================================================
+// API/TC23 Verify system handles requests for non-existent plant IDs
+// =============================================================
+
+When(
+  "the user attempts to get a plant with invalid ID {string}",
+  (invalidId) => {
+    if (!userToken) {
+      throw new Error(
+        "Missing userToken; run non-admin authentication step first",
+      );
+    }
+
+    return plantPage.getPlant(invalidId, userToken).then((response) => {
+      apiResponse = response;
+    });
+  },
+);
+
+Then("the API should return a 404 Not Found status", () => {
+  expect(apiResponse, "apiResponse should exist").to.exist;
+  expect(apiResponse.status).to.eq(404);
+
+  if (apiResponse.body.error) {
+    expect(apiResponse.body.error).to.contain("NOT_FOUND");
+  }
+
+  cy.log("✓ TC23 Passed: Correctly received 404 for non-existent plant ID");
+});
 
 // =============================================================
 // Cleanup after tests

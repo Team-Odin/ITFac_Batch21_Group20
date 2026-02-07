@@ -104,7 +104,7 @@ Feature: Plant Management Module
     Scenario: Verify Add Plant Button Visibility as Non-Admin
         Given I am logged in as "Standard User"
         And I am on the "Plants" page
-        Then The "Add a Plant" button is NOT visible
+        Then The "Add Plant" button is NOT visible
         
     @UI/TC143
     Scenario: Verify Plant List Pagination as Non-Admin
