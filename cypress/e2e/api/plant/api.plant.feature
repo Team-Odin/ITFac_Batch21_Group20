@@ -82,7 +82,7 @@ Feature: Plant Management Module
 			Price must be greater than 0
 			Name is required
 			"""
-
+ 
 	@API/TC132
 	Scenario: API/TC132 Verify Plant Summary Data Retrieval
 		Given Admin has valid JWT token

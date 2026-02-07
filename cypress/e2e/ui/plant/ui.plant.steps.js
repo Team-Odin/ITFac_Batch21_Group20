@@ -400,14 +400,14 @@ Then("I should see the plant list table", () => {
 Then("I should see the {string} button", (/** @type {string} */ buttonText) => {
   const text = String(buttonText).replaceAll(/\s+/g, " ").trim();
 
-  if (/^add(\s+a)?\s+plant$/i.test(text)) {
+  if (/^add?\s+plant$/i.test(text)) {
     return plantPage.addPlantBtn
       .should("be.visible")
       .invoke("text")
       .then((actual) => {
         const actualNorm = normalizeText(actual);
         expect(actualNorm.toLowerCase(), "Add Plant button text").to.match(
-          /^add(\s+a)?\s+plant$/i,
+          /^add?\s+plant$/i,
         );
       });
   }
@@ -1025,29 +1025,73 @@ Then(
       );
     }
 
-    // Prefer explicit highlight signal (active class / aria-current),
-    // but fall back to a weaker check if the app doesn't implement highlighting.
-    return plantPage.plantsMenu.should("be.visible").then(($a) => {
-      const linkClasses = normalizeText($a.attr("class")).toLowerCase();
-      const ariaCurrent = String($a.attr("aria-current") || "").toLowerCase();
-      const liClasses = normalizeText(
-        $a.closest("li").attr("class"),
-      ).toLowerCase();
+    // This test must validate the UI highlight state (not just URL).
+    // We consider the menu item highlighted if we can observe a standard active marker:
+    // - aria-current="page" (preferred)
+    // - aria-selected="true"
+    // - common active/selected CSS class names on the link or a nearby wrapper element
+    cy.location("pathname", { timeout: 10000 }).should("eq", "/ui/plants");
 
-      const isActive =
-        ariaCurrent === "page" ||
-        linkClasses.split(/\s+/g).includes("active") ||
-        liClasses.split(/\s+/g).includes("active");
+    const navLinkSelector =
+      "nav a, aside a, header a, [role='navigation'] a, .sidebar a, .nav a";
 
-      if (isActive) return;
+    return cy
+      .contains(navLinkSelector, /^\s*plants\s*$/i)
+      .should("be.visible")
+      .then(($a) => {
+        /** @param {JQuery<HTMLElement>} $el */
+        const classList = ($el) =>
+          normalizeText($el.attr("class"))
+            .toLowerCase()
+            .split(/\s+/g)
+            .filter(Boolean);
 
-      // Fallback: at least ensure we're on the Plants page and the Plants menu exists.
-      return cy.location("pathname", { timeout: 10000 }).then((pathname) => {
-        expect(pathname, "pathname when checking Plants nav").to.eq(
-          "/ui/plants",
+        const activeTokens = new Set([
+          "active",
+          "is-active",
+          "selected",
+          "is-selected",
+          "current",
+          "router-link-active",
+          "router-link-exact-active",
+          "mui-selected",
+          "ant-menu-item-selected",
+        ]);
+
+        const $li = $a.closest("li");
+        const $parent = $a.parent();
+        const $activeAncestor = $a.closest(
+          "[aria-current],[aria-selected],.active,.selected,.current",
         );
+
+        const ariaCurrent = String(
+          $a.attr("aria-current") || $activeAncestor.attr("aria-current") || "",
+        ).toLowerCase();
+        const ariaSelected = String(
+          $a.attr("aria-selected") ||
+            $activeAncestor.attr("aria-selected") ||
+            "",
+        ).toLowerCase();
+
+        const candidates = [$a, $li, $parent, $activeAncestor].filter(
+          (x) => x && x.length > 0,
+        );
+
+        const hasActiveClass = candidates.some(($el) =>
+          classList($el).some((cls) => activeTokens.has(cls)),
+        );
+
+        const isActive =
+          ariaCurrent === "page" ||
+          ariaCurrent === "true" ||
+          ariaSelected === "true" ||
+          hasActiveClass;
+
+        expect(
+          isActive,
+          `Expected 'Plants' nav item to be highlighted. aria-current='${ariaCurrent}', aria-selected='${ariaSelected}', classes='${classList($a).join(" ")}', liClasses='${classList($li).join(" ")}'`,
+        ).to.eq(true);
       });
-    });
   },
 );
 
