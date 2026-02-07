@@ -1,34 +1,42 @@
-const { spawn } = require("child_process");
-const fs = require("fs");
-const path = require("path");
+const { spawn } = require("node:child_process");
+const path = require("node:path");
 
-// Load .env file
+if (process.argv.includes("--help") || process.argv.includes("-h")) {
+  console.log("Usage: npm start");
+  console.log("");
+  console.log("Reads DB settings from .env (or shell env):");
+  console.log("  DB_URL");
+  console.log("  DB_USERNAME");
+  console.log("  DB_PASSWORD");
+  process.exit(0);
+}
+
+// Load .env from this repo (so `npm start` always uses the same file)
 const envPath = path.join(__dirname, ".env");
-let dbPassword = "T|ez)@-fqVHEPaKf"; // default
-let dbUsername = "teamodin"; // default
-let dbUrl =
-  "jdbc:mysql://136.119.111.245:3306/qa_training?useSSL=false&allowPublicKeyRetrieval=true"; // default
+require("dotenv").config({
+  path: envPath,
+  // Avoid surprises if DB_URL is set in the shell/CI environment.
+  // If you need shell env to win, change this to `false`.
+  override: true,
+});
 
-if (fs.existsSync(envPath)) {
-  const envContent = fs.readFileSync(envPath, "utf-8");
+const dbUrl = process.env.DB_URL;
+const dbUsername = process.env.DB_USERNAME;
+const dbPassword = process.env.DB_PASSWORD;
 
-  // Function to remove surrounding quotes
-  const removeQuotes = (str) => str.replace(/^["']|["']$/g, "");
+const isBlank = (value) => value == null || String(value).trim() === "";
 
-  const passwordMatch = envContent.match(/DB_PASSWORD=(.+)/m);
-  if (passwordMatch) {
-    dbPassword = removeQuotes(passwordMatch[1].trim());
-  }
+const missing = [];
+if (isBlank(dbUrl)) missing.push("DB_URL");
+if (isBlank(dbUsername)) missing.push("DB_USERNAME");
+if (isBlank(dbPassword)) missing.push("DB_PASSWORD");
 
-  const usernameMatch = envContent.match(/DB_USERNAME=(.+)/m);
-  if (usernameMatch) {
-    dbUsername = removeQuotes(usernameMatch[1].trim());
-  }
-
-  const urlMatch = envContent.match(/DB_URL=(.+)/m);
-  if (urlMatch) {
-    dbUrl = removeQuotes(urlMatch[1].trim());
-  }
+if (missing.length > 0) {
+  console.error(
+    `Missing required environment variables: ${missing.join(", ")}. ` +
+      `Set them in ${envPath} (or in your shell env).`,
+  );
+  process.exit(1);
 }
 
 console.log(`Connecting to database: ${dbUrl}`);
@@ -47,7 +55,7 @@ const javaProcess = spawn(
   {
     stdio: "inherit",
     shell: false, // Changed to false to avoid shell interpretation issues
-  }
+  },
 );
 
 javaProcess.on("error", (err) => {
