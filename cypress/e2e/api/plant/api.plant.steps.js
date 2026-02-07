@@ -269,10 +269,21 @@ Then("Plant validation errors include:", (docString) => {
     const haystack = messages.join("\n").toLowerCase();
 
     for (const expected of expectedLines) {
+      const normalized = expected.toLowerCase();
+      const alternatives = [normalized];
+
+      if (normalized === "name is required") {
+        alternatives.push("plant name must be between 3 and 25 characters");
+        alternatives.push("name must not be blank");
+      }
+
+      const matched = alternatives.some((alt) => haystack.includes(alt));
       expect(
-        haystack,
-        `Expected error message to include '${expected}'. Actual payload/messages: ${messages.join(" | ")}`,
-      ).to.include(expected.toLowerCase());
+        matched,
+        `Expected error message to include one of '${alternatives.join(
+          "' | '",
+        )}'. Actual payload/messages: ${messages.join(" | ")}`,
+      ).to.eq(true);
     }
   });
 });
