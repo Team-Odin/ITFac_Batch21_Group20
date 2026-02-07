@@ -1,8 +1,8 @@
 @ui @category
 Feature: Category Management Module
-    As an admin or user
-    I want to manage categories
-    So that I can organize plants in the system
+  As an admin or user
+  I want to manage categories
+  So that I can organize plants in the system
 
   @UI/TC01
   Scenario: UI/TC01 Verify Add Category button visibility
@@ -18,25 +18,33 @@ Feature: Category Management Module
     Then System redirect to "/ui/categories/add"
 
   @UI/TC03
-  Scenario: UI/TC03 Verify Creating a Main Category
+  Scenario Outline: UI/TC03 Verify Creating a Main Category
     Given I am logged in as Admin
     And I am on the "Add Category" page
-    When Enter "Fruits" in "Category Name"
+    When Enter "<MainCategory>" in "Category Name"
     And Leave "Parent Category" empty
     And Click "Save" button
-    Then System redirects to the list "Fruits" appears in the category table
-    And Show "Category created successfully" message
+    Then System redirects to the list "<MainCategory>" appears in the category table
+    And Show "<SuccessMessage>" message
+
+    Examples:
+      | MainCategory | SuccessMessage                |
+      | Fruits       | Category created successfully |
 
   @UI/TC04
-  Scenario: UI/TC04 Verify Creating a Sub Category
+  Scenario Outline: UI/TC04 Verify Creating a Sub Category
     Given I am logged in as Admin
     And I am on the "Add Category" page
-    And "Fruits" category exists
-    When Enter "Apple" in "Category Name"
-    And Select "Fruits" from "Parent Category"
+    And "<ParentCategory>" category exists
+    When Enter "<ChildCategory>" in "Category Name"
+    And Select "<ParentCategory>" from "Parent Category"
     And Click "Save" button
-    Then System redirects to the list "Apple" appears in the category table
-    And "Apple" is saved and linked to "Fruits"
+    Then System redirects to the list "<ChildCategory>" appears in the category table
+    And "<ChildCategory>" is saved and linked to "<ParentCategory>"
+
+    Examples:
+      | ParentCategory | ChildCategory |
+      | Fruits         | Apple         |
 
   @UI/TC05
   Scenario: UI/TC05 Verify Pagination Functionality
@@ -99,13 +107,17 @@ Feature: Category Management Module
     Then The "Add Category" button is NOT present
 
   @UI/TC12
-  Scenario: UI/TC12 Verify Search by Name
+  Scenario Outline: UI/TC12 Verify Search by Name
     Given I am logged in as User
     And I am on the "Categories" page
-    And "Fruits" category exists
-    When Enter "Fruits" in search bar
+    And "<CategoryName>" category exists
+    When Enter "<SearchTerm>" in search bar
     And Click "Search"
-    Then List update display only the "Fruits" category
+    Then List update display only the "<CategoryName>" category
+
+    Examples:
+      | CategoryName | SearchTerm |
+      | Fruits       | Fruits     |
 
   @UI/TC13
   Scenario: UI/TC13 Verify Filter by Parent
@@ -148,75 +160,103 @@ Feature: Category Management Module
     Then The categories should be sorted by id in descending order
 
   @UI/TC18
-  Scenario: UI/TC18 Verify "Search by Name" functionality in Category page for an existing category
+  Scenario Outline: UI/TC18 Verify "Search by Name" functionality in Category page for an existing category
     Given I am logged in as Admin
     And I am on the "Categories" page
-    And "Fruits" category exists
-    When Enter "Fruits" in search bar
+    And "<CategoryName>" category exists
+    When Enter "<SearchTerm>" in search bar
     And Click "Search" button
-    Then List update display only the "Fruits" category
+    Then List update display only the "<CategoryName>" category
+
+    Examples:
+      | CategoryName | SearchTerm |
+      | Fruits       | Fruits     |
 
   @UI/TC19
-  Scenario: UI/TC19 Verify "Search by Name" functionality in Category page with space in search field
+  Scenario Outline: UI/TC19 Verify "Search by Name" functionality in Category page with space in search field
     Given I am logged in as Admin
     And I am on the "Categories" page
-    And "Fruits" category exists
-    When Enter " Fruits" in search bar
+    And "<CategoryName>" category exists
+    When Enter "<SearchTerm>" in search bar
     And Click "Search" button
-    Then List update display only the "Fruits" category
+    Then List update display only the "<CategoryName>" category
+
+    Examples:
+      | CategoryName | SearchTerm |
+      | Fruits       | Fruits     |
 
   @UI/TC20
-  Scenario: UI/TC20 Verify "Search by Name" functionality in Category page for an unregistered category
+  Scenario Outline: UI/TC20 Verify "Search by Name" functionality in Category page for an unregistered category
     Given I am logged in as Admin
     And I am on the "Categories" page
-    And "Vegetables" category doesn't exists
-    When Enter "Vegetables" in search bar
+    And "<MissingCategory>" category doesn't exists
+    When Enter "<SearchTerm>" in search bar
     And Click "Search" button
-    Then List update display 'No category found' message
+    Then List update display '<NoResultsMessage>' message
+
+    Examples:
+      | MissingCategory | SearchTerm | NoResultsMessage  |
+      | Vegetables      | Vegetables | No category found |
 
   @UI/TC21
-  Scenario: UI/TC21 Verify "Search by Name" functionality in Category page for a special character input
+  Scenario Outline: UI/TC21 Verify "Search by Name" functionality in Category page for a special character input
     Given I am logged in as Admin
     And I am on the "Categories" page
-    And "*&%" category doesn't exists
-    When Enter "*&%" in search bar
+    And "<MissingCategory>" category doesn't exists
+    When Enter "<SearchTerm>" in search bar
     And Click "Search" button
-    Then List update display 'No category found' message
+    Then List update display '<NoResultsMessage>' message
+
+    Examples:
+      | MissingCategory | SearchTerm | NoResultsMessage  |
+      | *&%             | *&%        | No category found |
 
   @UI/TC22
-  Scenario: UI/TC22 Verify "Search by Name" within a specific "Parent Category"
+  Scenario Outline: UI/TC22 Verify "Search by Name" within a specific "Parent Category"
     Given I am logged in as Admin
     And I am on the "Categories" page
-    And A parent category "Fruits" with child "Apple" exists
-    When Select "Fruits" from "Parent Category" filter dropdown
-    And Enter "Apple" in search bar
+    And A parent category "<ParentCategory>" with child "<ChildCategory>" exists
+    When Select "<ParentCategory>" from "Parent Category" filter dropdown
+    And Enter "<ChildCategory>" in search bar
     And Click "Search" button
-    Then The table should display only the "Apple" category
-    And The "Parent Category" column for "Apple" should show "Fruits"
+    Then The table should display only the "<ChildCategory>" category
+    And The "Parent Category" column for "<ChildCategory>" should show "<ParentCategory>"
+
+    Examples:
+      | ParentCategory | ChildCategory |
+      | Fruits         | Apple         |
 
   @UI/TC23
-  Scenario: UI/TC23 Verify empty search returns all children of selected Parent Category
+  Scenario Outline: UI/TC23 Verify empty search returns all children of selected Parent Category
     Given I am logged in as Admin
     And I am on the "Categories" page
-    And A parent category "Fruits" with child "Apple" exists
-    When Select "Fruits" from "Parent Category" filter dropdown
-    And Enter " " in search bar
+    And A parent category "<ParentCategory>" with child "<ChildCategory>" exists
+    When Select "<ParentCategory>" from "Parent Category" filter dropdown
+    And Enter "<SearchTerm>" in search bar
     And Click "Search" button
-    Then The table should display the "Apple" category
-    And Every row shown should have "Fruits" as the Parent Category
+    Then The table should display the "<ChildCategory>" category
+    And Every row shown should have "<ParentCategory>" as the Parent Category
+
+    Examples:
+      | ParentCategory | ChildCategory | SearchTerm |
+      | Fruits         | Apple         |            |
 
   @UI/TC24
-  Scenario: UI/TC24 Verify "Reset" button clears search and filters
+  Scenario Outline: UI/TC24 Verify "Reset" button clears search and filters
     Given I am logged in as Admin
     And I am on the "Categories" page
-    And A parent category "Fruits" with child "Apple" exists
-    When Select "Fruits" from "Parent Category" filter dropdown
-    And Enter "Apple" in search bar
+    And A parent category "<ParentCategory>" with child "<ChildCategory>" exists
+    When Select "<ParentCategory>" from "Parent Category" filter dropdown
+    And Enter "<ChildCategory>" in search bar
     And Click "Search" button
     And Click the "Reset" button
     Then The "Parent Category" filter should be cleared
     And The "Search" bar should be empty
     And The table should show all categories
+
+    Examples:
+      | ParentCategory | ChildCategory |
+      | Fruits         | Apple         |
 
   @UI/TC25
   Scenario: UI/TC25 Verify "Edit" button is hidden for regular User
@@ -248,93 +288,129 @@ Feature: Category Management Module
     Then The category should be removed from the table
 
   @UI/TC29
-  Scenario: UI/TC29 Verify system behavior when creating a category with an empty name
+  Scenario Outline: UI/TC29 Verify system behavior when creating a category with an empty name
     Given I am logged in as Admin
     And I am on the "add category" page
     When I leave the category name field empty
     And I click the "Save" button
-    Then I should see a validation error message "Category name is required"
+    Then I should see a validation error message "<ValidationMessage>"
     And The system should not navigate away from the "add category" page
+
+    Examples:
+      | ValidationMessage         |
+      | Category name is required |
 
   @UI/TC30
-  Scenario: UI/TC30 Verify successful creation of a new category
+  Scenario Outline: UI/TC30 Verify successful creation of a new category
     Given I am logged in as Admin
     And I am on the "add category" page
-    When I enter "Vegetables" into the category name field
+    When I enter "<NewCategory>" into the category name field
     And I click the "Save" button
     Then I should be redirected to the "Categories" page
-    And I should see a success message "Category created successfully"
-    And The new category "Vegetables" should appear in the table
+    And I should see a success message "<SuccessMessage>"
+    And The new category "<NewCategory>" should appear in the table
+
+    Examples:
+      | NewCategory | SuccessMessage                |
+      | Vegetables  | Category created successfully |
 
   @UI/TC31
-  Scenario: UI/TC31 Verify system behavior when creating a category name with 2 letters and a space
+  Scenario Outline: UI/TC31 Verify system behavior when creating a category name with 2 letters and a space
     Given I am logged in as Admin
     And I am on the "add category" page
-    When I enter "Ab " into the category name field
+    When I enter "<CategoryName>" into the category name field
     And I click the "Save" button
-    Then I should see a validation error message "Category name must be between 3 and 10 characters"
+    Then I should see a validation error message "<ValidationMessage>"
     And The system should not navigate away from the "add category" page
+
+    Examples:
+      | CategoryName | ValidationMessage                                 |
+      | Ab           | Category name must be between 3 and 10 characters |
 
   @UI/TC32
-  Scenario: UI/TC32 Verify system behavior when creating a category name with only 2 letters
+  Scenario Outline: UI/TC32 Verify system behavior when creating a category name with only 2 letters
     Given I am logged in as Admin
     And I am on the "add category" page
-    When I enter "Ab" into the category name field
+    When I enter "<CategoryName>" into the category name field
     And I click the "Save" button
-    Then I should see a validation error message "Category name must be between 3 and 10 characters"
+    Then I should see a validation error message "<ValidationMessage>"
     And The system should not navigate away from the "add category" page
+
+    Examples:
+      | CategoryName | ValidationMessage                                 |
+      | Ab           | Category name must be between 3 and 10 characters |
 
   @UI/TC33
-  Scenario: UI/TC33 Verify system behavior when creating a category with only special characters
+  Scenario Outline: UI/TC33 Verify system behavior when creating a category with only special characters
     Given I am logged in as Admin
     And I am on the "add category" page
-    When I enter "*#/" into the category name field
+    When I enter "<CategoryName>" into the category name field
     And I click the "Save" button
-    Then I should see a validation error message "Category name must only contain letters and numbers"
+    Then I should see a validation error message "<ValidationMessage>"
     And The system should not navigate away from the "add category" page
+
+    Examples:
+      | CategoryName | ValidationMessage                                   |
+      | *#/          | Category name must only contain letters and numbers |
 
   @UI/TC34
-  Scenario: UI/TC34 Verify successful creation of a new category
+  Scenario Outline: UI/TC34 Verify successful creation of a new category
     Given I am logged in as Admin
     And I am on the "add category" page
-    When I enter "Vegetables" into the category name field
+    When I enter "<NewCategory>" into the category name field
     And I click the "Save" button
     Then I should be redirected to the "Categories" page
-    And I should see a success message "Category created successfully"
-    And The new category "Vegetables" should appear in the table
+    And I should see a success message "<SuccessMessage>"
+    And The new category "<NewCategory>" should appear in the table
+
+    Examples:
+      | NewCategory | SuccessMessage                |
+      | Vegetables  | Category created successfully |
 
   @UI/TC35
-  Scenario: UI/TC35 Verify system behavior when creating a duplicate sub-category
+  Scenario Outline: UI/TC35 Verify system behavior when creating a duplicate sub-category
     Given I am logged in as Admin
-    And A parent category "Plants" with child "Vegetables" exists
+    And A parent category "<ParentCategory>" with child "<ChildCategory>" exists
     And I am on the "add category" page
-    When I enter "Vegetables" into the category name field
-    And I select "Plants" from the parent category dropdown
+    When I enter "<ChildCategory>" into the category name field
+    And I select "<ParentCategory>" from the parent category dropdown
     And I click the "Save" button
     Then I should be redirected to the "Categories" page
-    And I should see a duplicate error message "Sub-category 'Vegetables' already exists under this parent"
-    And The category "Vegetables" should only appear once in the table
+    And I should see a duplicate error message "<DuplicateMessage>"
+    And The category "<ChildCategory>" should only appear once in the table
+
+    Examples:
+      | ParentCategory | ChildCategory | DuplicateMessage                                           |
+      | Plants         | Vegetables    | Sub-category 'Vegetables' already exists under this parent |
 
   @UI/TC36
-  Scenario: UI/TC36 Verify system behavior when creating a duplicate sub-category
+  Scenario Outline: UI/TC36 Verify system behavior when creating a duplicate sub-category
     Given I am logged in as Admin
-    And A parent category "Plants" with child "Vegetables" exists
+    And A parent category "<ParentCategory>" with child "<ChildCategory>" exists
     And I am on the "add category" page
-    When I enter "Vegetables" into the category name field
-    And I select "Plants" from the parent category dropdown
+    When I enter "<ChildCategory>" into the category name field
+    And I select "<ParentCategory>" from the parent category dropdown
     And I click the "Save" button
     Then I should be redirected to the "Categories" page
-    And I should see a duplicate error message "Sub-category 'Vegetables' already exists under this parent"
-    And The category "Vegetables" should only appear once in the table
+    And I should see a duplicate error message "<DuplicateMessage>"
+    And The category "<ChildCategory>" should only appear once in the table
+
+    Examples:
+      | ParentCategory | ChildCategory | DuplicateMessage                                           |
+      | Plants         | Vegetables    | Sub-category 'Vegetables' already exists under this parent |
 
   @UI/TC37
-  Scenario: UI/TC37 Verify system behavior when category name exceeds 10 characters
+  Scenario Outline: UI/TC37 Verify system behavior when category name exceeds 10 characters
     Given I am logged in as Admin
     And I am on the "add category" page
-    When I enter "VegetablesGroup" into the category name field
+    When I enter "<CategoryName>" into the category name field
     And I click the "Save" button
-    Then I should see a validation error message "Category name must be between 3 and 10 characters"
+    Then I should see a validation error message "<ValidationMessage>"
     And The system should not navigate away from the "add category" page
+
+    Examples:
+      | CategoryName    | ValidationMessage                                 |
+      | VegetablesGroup | Category name must be between 3 and 10 characters |
 
   @UI/TC38
   Scenario: UI/TC38 Verify "Cancel" button navigates back to Categories page

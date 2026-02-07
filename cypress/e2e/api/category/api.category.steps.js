@@ -6,6 +6,7 @@ import {
 } from "@badeball/cypress-cucumber-preprocessor";
 import { categoryPage } from "../../../support/pages/categoryPage";
 import { apiLoginAsUser } from "../../preconditions/login.preconditions";
+import { expectStatus } from "../../../support/utils/httpAssertions";
 
 let authHeader;
 let endpoint;
@@ -162,15 +163,6 @@ After((info) => {
     headers: { Authorization: authHeader },
     failOnStatusCode: false,
   });
-});
-
-// -------------------------------------------------------------
-// DB cleanup (best-effort) after every Category API scenario
-// -------------------------------------------------------------
-After(() => {
-  // Uses SQL reset when allowed (local DB by default).
-  // If DB reset is skipped (e.g., non-local DB without opt-in), scenario-level API cleanup hooks still run.
-  return cy.task("db:reset", null, { log: false });
 });
 
 // =============================================================
@@ -430,12 +422,12 @@ When("Send GET request to: {string}", (rawEndpoint) => {
 
 Then("Status Code: {int} Created", (expectedStatus) => {
   expect(lastResponse, "lastResponse should exist").to.exist;
-  expect(lastResponse.status).to.eq(Number(expectedStatus));
+  expectStatus(lastResponse, expectedStatus, "lastResponse status");
 });
 
 Then("Status Code: {int} OK", (expectedStatus) => {
   expect(lastResponse, "lastResponse should exist").to.exist;
-  expect(lastResponse.status).to.eq(Number(expectedStatus));
+  expectStatus(lastResponse, expectedStatus, "lastResponse status");
 });
 
 Then("Response contains {string}: {string}", (key, expectedValue) => {
@@ -616,17 +608,17 @@ Then("Response contains correct id and name for that category", () => {
 
 Then("Status Code: {int} Bad Request", (expectedStatus) => {
   expect(lastResponse, "lastResponse should exist").to.exist;
-  expect(lastResponse.status).to.eq(Number(expectedStatus));
+  expectStatus(lastResponse, expectedStatus, "lastResponse status");
 });
 
 Then("Status Code: {int} Unauthorized", (expectedStatus) => {
   expect(lastResponse, "lastResponse should exist").to.exist;
-  expect(lastResponse.status).to.eq(Number(expectedStatus));
+  expectStatus(lastResponse, expectedStatus, "lastResponse status");
 });
 
 Then("Status Code: {int} Forbidden", (expectedStatus) => {
   expect(lastResponse, "lastResponse should exist").to.exist;
-  expect(lastResponse.status).to.eq(Number(expectedStatus));
+  expectStatus(lastResponse, expectedStatus, "lastResponse status");
 });
 
 Then("Response body matches standard error schema", () => {
@@ -1153,7 +1145,7 @@ Then(
   "All returned items have parent or parentId associated with ID {int}",
   (expectedParentId) => {
     expect(lastResponse, "lastResponse should exist").to.exist;
-    expect(lastResponse.status).to.eq(200);
+    expectStatus(lastResponse, 200, "lastResponse status");
 
     const id = Number(expectedParentId);
     const expectedName = expectedParentNameForTc23;
@@ -1201,7 +1193,7 @@ Then(
 
 Then("Response list is sorted A-Z by name", () => {
   expect(lastResponse, "lastResponse should exist").to.exist;
-  expect(lastResponse.status).to.eq(200);
+  expectStatus(lastResponse, 200, "lastResponse status");
   expect(lastResponse.body, "response body").to.exist;
 
   const content = Array.isArray(lastResponse?.body?.content)
@@ -1234,7 +1226,7 @@ Then("Response list is sorted A-Z by name", () => {
 
 Then("Response list is sorted Z-A by name", () => {
   expect(lastResponse, "lastResponse should exist").to.exist;
-  expect(lastResponse.status).to.eq(200);
+  expectStatus(lastResponse, 200, "lastResponse status");
   expect(lastResponse.body, "response body").to.exist;
 
   const content = Array.isArray(lastResponse?.body?.content)
@@ -1670,7 +1662,8 @@ Then("Response message indicates {string}", (expectedMessage) => {
 
 // Matches exactly: Then Status Code: 500 Internal Server Error
 Then("Status Code: {int} Internal Server Error", (statusCode) => {
-  expect(lastResponse.status).to.eq(statusCode);
+  expect(lastResponse, "lastResponse should exist").to.exist;
+  expectStatus(lastResponse, statusCode, "lastResponse status");
 });
 
 // NOTE: Do not add a generic "Status Code: {int} {string}" step.
