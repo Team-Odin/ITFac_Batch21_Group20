@@ -92,7 +92,3 @@ Feature: Plant Management Module
         When I click the "Plants" menu
         Then the "Plants" navigation menu item should be highlighted
         And I should be on the "Plants" page
-
- 
-        
-
