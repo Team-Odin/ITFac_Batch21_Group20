@@ -405,27 +405,6 @@ When("Enter {string} in {string}", (categoryValue, _categoryField) => {
 
 When("Leave {string} empty", (_parentCategory) => {});
 
-// When("Click {string} button", (buttonText) => {
-//   const t = String(buttonText).replaceAll(/\s+/g, " ").trim().toLowerCase();
-
-//   if (t === "save") {
-//     addCategoryPage.submitBtn.should("be.visible").click();
-//     return;
-//   }
-
-//   if (t === "search") {
-//     categoryPage.searchBtn.should("be.visible").click();
-//     return;
-//   }
-
-//   if (t === "reset") {
-//     categoryPage.resetBtn.should("be.visible").click();
-//     return;
-//   }
-
-//   throw new Error(`Unknown button: ${JSON.stringify(buttonText)}`);
-// });
-
 Then(
   "System redirects to the list {string} appears in the category table",
   (enteredCategoryValue) => {
@@ -772,51 +751,6 @@ Then("The {string} button is NOT present", (buttonText) => {
 // =============================================================
 // UI/TC12 Verify Search by Name
 // =============================================================
-
-// When("Enter {string} in search bar", (searchText) => {
-//   categoryPage.assertOnCategoriesPage();
-//   categoryPage.searchNameInput.should("be.visible").clear().type(searchText);
-// });
-
-// When("Click {string}", (controlText) => {
-//   const t = String(controlText).replaceAll(/\s+/g, " ").trim().toLowerCase();
-
-//   if (t === "search") {
-//     categoryPage.searchBtn.should("be.visible").click();
-//     return;
-//   }
-
-//   if (t === "reset") {
-//     categoryPage.resetBtn.should("be.visible").click();
-//     return;
-//   }
-
-//   throw new Error(`Unknown control to click: ${JSON.stringify(controlText)}`);
-// });
-
-// Then("List update display only the {string} category", (expectedCategory) => {
-//   const expected = String(expectedCategory).trim();
-
-//   categoryPage.assertOnCategoriesPage();
-//   categoryPage.categoriesTable.should("be.visible");
-
-//   cy.get("table tbody tr").then(($rows) => {
-//     const dataRows = Array.from($rows).filter(
-//       (row) => Cypress.$(row).find("td[colspan]").length === 0,
-//     );
-
-//     expect(dataRows.length, "data rows after search").to.be.greaterThan(0);
-
-//     dataRows.forEach((row) => {
-//       const $tds = Cypress.$(row).find("td");
-//       const nameCellText = Cypress.$($tds[1])
-//         .text()
-//         .replaceAll(/\s+/g, " ")
-//         .trim();
-//       expect(nameCellText).to.eq(expected);
-//     });
-//   });
-// });
 
 // =============================================================
 // UI/TC13 Verify Filter by Parent
