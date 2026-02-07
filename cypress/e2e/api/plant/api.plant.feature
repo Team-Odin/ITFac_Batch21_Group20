@@ -79,7 +79,7 @@ Feature: Plant Management Module
 		Then Status Code: 400 Bad Request
 		And Plant validation errors include:
 			"""
-			Price must be positive
+			Price must be greater than 0
 			Name is required
 			"""
 
