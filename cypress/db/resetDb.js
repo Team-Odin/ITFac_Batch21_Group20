@@ -55,6 +55,12 @@ const isLocalHost = (host) => {
   return h === "localhost" || h === "127.0.0.1" || h === "::1";
 };
 
+const stripOuterQuotes = (value) => {
+  const s = String(value ?? "").trim();
+  // Explicitly strip only a single pair of surrounding quotes.
+  return s.replace(/^['"]/, "").replace(/['"]$/, "");
+};
+
 const getDbConnectionOptions = () => {
   const dbUrlRaw = process.env.DB_URL;
   const dbUrl = normalizeDbUrl(dbUrlRaw);
@@ -68,10 +74,14 @@ const getDbConnectionOptions = () => {
   try {
     url = new URL(dbUrl);
   } catch (err) {
-    throw new Error(`Invalid DB_URL: ${dbUrlRaw}`);
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`Invalid DB_URL: ${dbUrlRaw} (${detail})`);
   }
 
-  const database = (url.pathname || "").replace(/^\//, "").trim();
+  const pathname = String(url.pathname || "");
+  const database = (
+    pathname.startsWith("/") ? pathname.slice(1) : pathname
+  ).trim();
   if (!database) {
     throw new Error(
       `DB_URL is missing database name in path: ${dbUrlRaw} (expected .../qa_training)`,
@@ -105,9 +115,10 @@ const getDbConnectionOptions = () => {
 };
 
 const resolveSqlFilePath = () => {
-  const relative =
-    process.env.DB_RESET_SQL_FILE || "sql/sample_plant_data_full.sql";
-  return path.resolve(__dirname, "..", "..", relative);
+  const raw = process.env.DB_RESET_SQL_FILE || "sql/sample_plant_data_full.sql";
+  // Support values like "sql/file.sql" and also accidental nested quoting from CI.
+  const unquoted = stripOuterQuotes(raw);
+  return path.resolve(__dirname, "..", "..", unquoted);
 };
 
 const runSqlFile = async () => {
@@ -117,7 +128,7 @@ const runSqlFile = async () => {
   }
 
   const sql = fs.readFileSync(sqlFile, "utf8");
-  const trimmed = sql.replace(/^\uFEFF/, ""); // strip BOM
+  const trimmed = sql.startsWith("\uFEFF") ? sql.slice(1) : sql; // strip BOM
 
   const options = getDbConnectionOptions();
   const connection = await mysql.createConnection(options);
@@ -134,11 +145,21 @@ const shouldResetForTrigger = (trigger) => {
 
   // Determine host locality from DB_URL
   let host;
+  let invalidDbUrl = false;
   try {
     const dbUrl = normalizeDbUrl(process.env.DB_URL);
-    const url = dbUrl ? new URL(dbUrl) : undefined;
-    host = url?.hostname;
-  } catch (e) {}
+    const parsed = dbUrl ? new URL(dbUrl) : undefined;
+    host = parsed?.hostname;
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.warn(`⚠️  DB reset disabled: invalid DB_URL (${detail})`);
+    host = undefined;
+    invalidDbUrl = true;
+  }
+
+  if (invalidDbUrl) {
+    return { enabled: false, reason: "Invalid DB_URL" };
+  }
 
   const local = isLocalHost(host);
   if (!local && !allowNonLocal) {
@@ -151,6 +172,8 @@ const shouldResetForTrigger = (trigger) => {
   const autoEnabled = local;
   const onRun = parseBool(process.env.DB_RESET_ON_RUN);
   const afterRun = parseBool(process.env.DB_RESET_AFTER_RUN);
+  const beforeSpec = parseBool(process.env.DB_RESET_BEFORE_SPEC);
+  const afterSpec = parseBool(process.env.DB_RESET_AFTER_SPEC);
 
   if (trigger === "before:run") {
     return { enabled: onRun ?? autoEnabled };
@@ -158,6 +181,15 @@ const shouldResetForTrigger = (trigger) => {
 
   if (trigger === "after:run") {
     return { enabled: afterRun ?? autoEnabled };
+  }
+
+  // Spec-level resets are intentionally opt-in because they can be slow.
+  if (trigger === "before:spec") {
+    return { enabled: beforeSpec ?? false };
+  }
+
+  if (trigger === "after:spec") {
+    return { enabled: afterSpec ?? false };
   }
 
   // Manual task: if it's local, allow by default; if non-local, it will be blocked above.

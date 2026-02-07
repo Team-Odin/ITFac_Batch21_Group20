@@ -25,6 +25,7 @@
   "devDependencies": {
     "@badeball/cypress-cucumber-preprocessor": "^24.0.0",
     "@bahmutov/cypress-esbuild-preprocessor": "^2.2.8",
+    "@cypress/grep": "^5.1.0",
     "@shelex/cypress-allure-plugin": "^2.41.2",
     "allure-commandline": "^2.36.0",
     "cypress": "^15.8.2",
