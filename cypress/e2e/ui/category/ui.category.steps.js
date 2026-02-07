@@ -5,10 +5,6 @@ import {
   Before,
   After,
 } from "@badeball/cypress-cucumber-preprocessor";
-import {
-  loginAsAdmin,
-  loginAsUser,
-} from "../../preconditions/login.preconditions";
 import { categoryPage } from "../../../support/pages/categoryPage";
 import { addCategoryPage } from "../../../support/pages/addCategoryPage";
 import dashboardPage from "../../../support/pages/dashboardPage";
@@ -318,14 +314,6 @@ After((info) => {
   });
 });
 
-// =============================================================
-// UI/TC01 Verify Add Category button visibility
-// =============================================================
-
-// =============================================================
-// UI/TC02 Verify "Add Category" Page Navigation
-// =============================================================
-
 Then("I should see the {string} button", (buttonText) => {
   const normalize = (s) =>
     String(s ?? "")
@@ -347,10 +335,6 @@ Then("I should see the {string} button", (buttonText) => {
 Then("System redirect to {string}", (path) => {
   cy.location("pathname").should("eq", path);
 });
-
-// =============================================================
-// UI/TC03 Verify Creating a Main Category
-// =============================================================
 
 When("Enter {string} in {string}", (categoryValue, _categoryField) => {
   const scenarioName = Cypress.currentTest?.title || "";
@@ -398,10 +382,6 @@ When("Click {string}", (controlText) => {
   clickNamedControl(controlText);
 });
 
-// =============================================================
-// UI/TC04 Verify Creating a Sub-Category
-// =============================================================
-
 Given("{string} category exists", (categoryName) => {
   cy.location("pathname").then((startPath) => {
     return ensureCategoryExists(categoryName).then(() => {
@@ -442,10 +422,6 @@ Then(
   },
 );
 
-// =============================================================
-// UI/TC05 Verify Pagination Functionality
-// =============================================================
-
 Given("with more than {string} categories exists", (minCount) => {
   categoryPage.ensureMinimumCategories(minCount);
 
@@ -470,10 +446,6 @@ Then("The list refreshes to show the next set of category records", () => {
 
   cy.log("Successfully navigated to next page of categories");
 });
-
-// =============================================================
-// UI/TC06 Verify Default Pagination State
-// =============================================================
 
 When("Observe the pagination controls at the bottom of the table", () => {
   // Scroll to bottom to ensure pagination is visible
@@ -524,10 +496,6 @@ Then("{string} button is enabled", (buttonName) => {
   }
 });
 
-// =============================================================
-// UI/TC07 Verify "Next" Button Navigation
-// =============================================================
-
 Then("The table refreshes with new data", () => {
   categoryPage.assertCategoryTableHasData();
 
@@ -554,10 +522,6 @@ Then("The {string} button becomes enabled", (buttonName) => {
 
   throw new Error(`Enable check not implemented for button: ${buttonName}`);
 });
-
-// =============================================================
-// UI/TC08 Verify "Previous" Button Navigation
-// =============================================================
 
 Given("I am on the {string} page {string}", (pageName, pageNumber) => {
   const page = String(pageName).trim().toLowerCase();
@@ -596,10 +560,6 @@ Then("The table refreshes with original data", () => {
   cy.log("Verified table returned to original page-1 data");
 });
 
-// =============================================================
-// UI/TC09 Verify Row Count Per Page
-// =============================================================
-
 When(
   "Count the number of category rows displayed in the table on {string}",
   (pageNumber) => {
@@ -621,10 +581,6 @@ Then(
     expect(categoryRowCount).to.eq(expected);
   },
 );
-
-// =============================================================
-// UI/TC10 Verify Last Page State
-// =============================================================
 
 Given("I am on the last page of {string}", (pageName) => {
   const page = String(pageName).trim().toLowerCase();
@@ -674,9 +630,6 @@ Then(
   },
 );
 
-// =============================================================
-// UI/TC11 Verify "Add Category" Button Hidden
-// =============================================================
 
 When("Scan top action area of the page", () => {
   // Ensure we're on the Categories page and at the top where action buttons usually live.
@@ -710,14 +663,6 @@ Then("The {string} button is NOT present", (buttonText) => {
   // Fallback: if a different button text is used, try a simple text lookup.
   cy.contains("a,button", normalized).should("not.exist");
 });
-
-// =============================================================
-// UI/TC12 Verify Search by Name
-// =============================================================
-
-// =============================================================
-// UI/TC13 Verify Filter by Parent
-// =============================================================
 
 When("Select a parent from the {string} filter dropdown", (_dropdownLabel) => {
   // Create a known parent+child so the filter always returns results.
@@ -756,10 +701,6 @@ Then("List updates to show only children of the selected parent", () => {
     });
   });
 });
-
-// =============================================================
-// UI/TC14 Verify Edit Action Hidden for Non admin User
-// =============================================================
 
 When('Inspect the "Actions" column of the category table', () => {
   categoryPage.assertOnCategoriesPage();
@@ -815,10 +756,6 @@ Then("Edit icon are either hidden or visually disabled", () => {
   });
 });
 
-// =============================================================
-// UI/TC15 Verify Delete Action Hidden for Non admin User
-// =============================================================
-
 Then("Delete icon are either hidden or visually disabled", () => {
   categoryPage.assertOnCategoriesPage();
   categoryPage.categoriesTable.should("be.visible");
@@ -859,10 +796,6 @@ Then("Delete icon are either hidden or visually disabled", () => {
     });
   });
 });
-
-// =============================================================
-// UI/TC16 Verify "Sorting by name" in Category page
-// =============================================================
 
 When("Click on the {string} column header to sort by name", (columnName) => {
   if (columnName.toLowerCase() === "name") {
@@ -976,10 +909,6 @@ Then("The categories should be sorted by name in descending order", () => {
   });
 });
 
-// =============================================================
-// UI/TC17 Sorting by ID in Category page
-// =============================================================
-
 When("Click on the {string} column header to sort by id", (columnName) => {
   if (columnName.toLowerCase() === "id") {
     // We capture the text of the first ID before clicking to use as a "Guard"
@@ -1055,10 +984,6 @@ Then("The categories should be sorted by id in descending order", () => {
   });
 });
 
-// =============================================================
-// UI/TC18, UI/TC19, UI/TC20, UI/TC21 Search Functionality in category
-// =============================================================
-
 When("Enter {string} in search bar", (categoryName) => {
   // Use the Page Object to type into the search input
   // These scenarios expect leading/trailing whitespace to be ignored.
@@ -1121,10 +1046,6 @@ Then("List update display {string} message", (expectedMessage) => {
     cy.get("table tbody tr").should("have.length", 1);
   });
 });
-
-// =============================================================
-// UI/TC22 Precondition: Create Parent and Child via API
-// =============================================================
 
 Given(
   "A parent category {string} with child {string} exists",
@@ -1341,10 +1262,6 @@ Then("The table should show all categories", () => {
     .should("have.length.at.least", 1); //
 });
 
-// =============================================================
-// UI/TC25 & UI/TC26 Role-Based Access Control - Edit/Delete button access (User Permissions)
-// =============================================================
-
 Then(
   "The {string} button should not be visible for any category",
   (buttonType) => {
@@ -1399,10 +1316,6 @@ Then(
   },
 );
 
-// =============================================================
-// UI/TC27 Admin Access Logic
-// =============================================================
-
 // 1. Fix the Visibility Step (The one currently showing as "Missing")
 Then("The {string} button should be visible for any category", (buttonType) => {
   const selector = `a[title="${buttonType}"], button[title="${buttonType}"]`;
@@ -1424,10 +1337,6 @@ Then("System should navigate to the category edit page", () => {
   // Matches /ui/categories/edit/ followed by the numeric ID
   cy.url().should("match", /\/ui\/categories\/edit\/\d+/);
 });
-
-// =============================================================
-// UI/TC28 Admin Delete Functionality
-// =============================================================
 
 // Ensure at least one category exists (Pre-condition)
 Given("At least one category exists", () => {
@@ -1475,10 +1384,6 @@ Then("The category should be removed from the table", function () {
   // Verify the table no longer contains that specific name
   cy.get("table").should("not.contain", name);
 });
-
-// =============================================================
-// UI/TC29 Validation for Empty Category Name for creating a new category
-// =============================================================
 
 When("I leave the category name field empty", () => {
   // We explicitly clear the field to ensure it is empty
@@ -1546,10 +1451,6 @@ Then(
     });
   },
 );
-
-// =============================================================
-// UI/TC30, UI/TC31, UI/TC32, UI/TC33 Validation for creating a new Category Name for creating a new category
-// =============================================================
 
 When("I enter {string} into the category name field", (categoryName) => {
   // Clear any existing text and type the new category name.
