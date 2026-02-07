@@ -4,6 +4,10 @@ class PlantPage {
     return cy.contains("a", "Plants");
   }
 
+  get addPlantBtn() {
+    return cy.get('a[href="/ui/plants/add"]');
+  }
+
   get plantsTable() {
     return cy.get("table");
   }
