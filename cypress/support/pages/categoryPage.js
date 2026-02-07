@@ -1,4 +1,16 @@
 class CategoryPage {
+  get tableHeaderCells() {
+    return cy.get("table thead th");
+  }
+
+  get tableHeaderRowCells() {
+    return cy.get("table thead tr th");
+  }
+
+  get tableBody() {
+    return cy.get("table tbody");
+  }
+
   get addCategoryBtn() {
     // Prefer a resilient locator based on the visible control label.
     // UI text may be "Add Category" or "Add A Category".
@@ -35,6 +47,18 @@ class CategoryPage {
 
   get tableRows() {
     return cy.get("table tbody tr");
+  }
+
+  tableRowsWith(options) {
+    return cy.get("table tbody tr", options);
+  }
+
+  get successAlert() {
+    return cy.get(".alert-success");
+  }
+
+  get dangerAlert() {
+    return cy.get(".alert-danger");
   }
 
   get nextPageBtn() {

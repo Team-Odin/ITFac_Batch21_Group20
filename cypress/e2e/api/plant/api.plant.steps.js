@@ -1,10 +1,6 @@
-import {
-  Given,
-  When,
-  Then,
-  After,
-} from "@badeball/cypress-cucumber-preprocessor";
+import { Given, When, Then } from "@badeball/cypress-cucumber-preprocessor";
 import { categoryPage } from "../../../support/pages/categoryPage";
+import { expectStatus } from "../../../support/utils/httpAssertions";
 
 let authHeader;
 
@@ -152,15 +148,6 @@ const parseJsonDocString = (docString) => {
   }
 };
 
-// -------------------------------------------------------------
-// DB cleanup (best-effort) after every Plant API scenario
-// -------------------------------------------------------------
-After(() => {
-  // Uses SQL reset when allowed (local DB by default).
-  // If DB reset is skipped (e.g., non-local DB without opt-in), scenarios still run.
-  return cy.task("db:reset", null, { log: false });
-});
-
 // =============================================================
 // Shared Preconditions / Auth
 // =============================================================
@@ -228,14 +215,14 @@ When("Send GET request to: {string}", (rawEndpoint) => {
 Then("Status Code: {int} OK", (expectedStatus) => {
   return cy.get("@lastResponse").then((res) => {
     expect(res, "lastResponse should exist").to.exist;
-    expect(res.status).to.eq(Number(expectedStatus));
+    expectStatus(res, expectedStatus, "lastResponse status");
   });
 });
 
 Then("Status Code: {int} Bad Request", (expectedStatus) => {
   return cy.get("@lastResponse").then((res) => {
     expect(res, "lastResponse should exist").to.exist;
-    expect(res.status).to.eq(Number(expectedStatus));
+    expectStatus(res, expectedStatus, "lastResponse status");
   });
 });
 
@@ -500,7 +487,7 @@ Then(
     if (!term) throw new Error("Expected search term is empty");
 
     return cy.get("@lastResponse").then((res) => {
-      expect(res.status).to.eq(200);
+      expectStatus(res, 200, "lastResponse status");
       const names = getPlantNamesFromBody(res.body);
       expect(names.length, "search result count").to.be.greaterThan(0);
       expect(
@@ -520,7 +507,7 @@ Then("Plant search results include {string}", (expectedName) => {
   if (!expected) throw new Error("Expected plant name is empty");
 
   return cy.get("@lastResponse").then((res) => {
-    expect(res.status).to.eq(200);
+    expectStatus(res, 200, "lastResponse status");
     const names = getPlantNamesFromBody(res.body).map((n) => n.toLowerCase());
     expect(
       names.some((n) => n.includes(expected)),
@@ -534,7 +521,7 @@ Then(
   () => {
     return cy.get("@lastResponse").then((res) => {
       expect(res, "lastResponse should exist").to.exist;
-      expect(res.status).to.eq(200);
+      expectStatus(res, 200, "lastResponse status");
 
       const body = res.body;
       const content = getPageContentArray(body);
@@ -631,7 +618,7 @@ Then(
     const id = Number(expectedCategoryId);
 
     return cy.get("@lastResponse").then((res) => {
-      expect(res.status).to.eq(200);
+      expectStatus(res, 200, "lastResponse status");
 
       const content = getPageContentArray(res.body);
       expect(content.length, "filtered result count").to.be.greaterThan(0);
@@ -663,7 +650,7 @@ Then("Error message indicates category not found", () => {
     }
 
     // Alternate acceptable behavior: 200 with empty result set.
-    expect(res.status).to.eq(200);
+    expectStatus(res, 200, "lastResponse status");
     const content = getPageContentArray(res.body);
     expect(content, "content").to.be.an("array");
     expect(

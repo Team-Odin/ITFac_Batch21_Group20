@@ -203,7 +203,7 @@ const clickNamedControl = (name) => {
 const resolveColumnIndexByHeader = (headerText) => {
   const target = normalizeSpaces(headerText).toLowerCase();
 
-  return cy.get("table thead th").then(($ths) => {
+  return categoryPage.tableHeaderCells.then(($ths) => {
     const headers = Array.from($ths).map((th) =>
       normalizeSpaces(Cypress.$(th).text()).toLowerCase(),
     );
@@ -375,7 +375,7 @@ Then(
 
     cy.get("body").then(($body) => {
       if ($body.find("table").length > 0) {
-        cy.get("table").within(() => {
+        categoryPage.categoriesTable.within(() => {
           cy.contains("td", enteredCategoryValue, { timeout: 10000 }).should(
             "be.visible",
           );
@@ -737,7 +737,7 @@ Then("List updates to show only children of the selected parent", () => {
   categoryPage.assertOnCategoriesPage();
   categoryPage.categoriesTable.should("be.visible");
 
-  cy.get("table tbody tr").then(($rows) => {
+  categoryPage.tableRows.then(($rows) => {
     const dataRows = Array.from($rows).filter(
       (row) => Cypress.$(row).find("td[colspan]").length === 0,
     );
@@ -765,7 +765,7 @@ When('Inspect the "Actions" column of the category table', () => {
   categoryPage.assertOnCategoriesPage();
   categoryPage.categoriesTable.should("be.visible");
 
-  cy.get("table thead tr th").then(($ths) => {
+  categoryPage.tableHeaderRowCells.then(($ths) => {
     const headers = Array.from($ths).map((th) =>
       String(th.innerText).replaceAll(/\s+/g, " ").trim().toLowerCase(),
     );
@@ -779,7 +779,7 @@ Then("Edit icon are either hidden or visually disabled", () => {
   categoryPage.assertOnCategoriesPage();
   categoryPage.categoriesTable.should("be.visible");
 
-  cy.get("table tbody tr").each(($row) => {
+  categoryPage.tableRows.each(($row) => {
     const $tds = Cypress.$($row).find("td");
 
     // Skip empty-state row
@@ -823,7 +823,7 @@ Then("Delete icon are either hidden or visually disabled", () => {
   categoryPage.assertOnCategoriesPage();
   categoryPage.categoriesTable.should("be.visible");
 
-  cy.get("table tbody tr").each(($row) => {
+  categoryPage.tableRows.each(($row) => {
     const $tds = Cypress.$($row).find("td");
 
     // Skip empty-state row
@@ -984,7 +984,7 @@ When("Click on the {string} column header to sort by id", (columnName) => {
   if (columnName.toLowerCase() === "id") {
     // We capture the text of the first ID before clicking to use as a "Guard"
     // This ensures Cypress waits for the table to actually refresh/resort
-    cy.get("table tbody tr")
+    categoryPage.tableRows
       .first()
       .find("td")
       .eq(0)
@@ -992,7 +992,7 @@ When("Click on the {string} column header to sort by id", (columnName) => {
       .then((idBefore) => {
         categoryPage.categoriesTable.find("th").contains("ID").click();
         // Guard: Only proceed when the ID in the first row has changed
-        cy.get("table tbody tr")
+        categoryPage.tableRows
           .first()
           .find("td")
           .eq(0)
@@ -1005,14 +1005,14 @@ When(
   "Click on the {string} column header to sort by id again",
   (columnName) => {
     if (columnName.toLowerCase() === "id") {
-      cy.get("table tbody tr")
+      categoryPage.tableRows
         .first()
         .find("td")
         .eq(0)
         .invoke("text")
         .then((idBefore) => {
           categoryPage.categoriesTable.find("th").contains("ID").click();
-          cy.get("table tbody tr")
+          categoryPage.tableRows
             .first()
             .find("td")
             .eq(0)
@@ -1025,7 +1025,7 @@ When(
 Then("The categories should be sorted by id in ascending order", () => {
   categoryPage.assertCategoryTableHasData();
 
-  cy.get("table tbody tr").then(($rows) => {
+  categoryPage.tableRows.then(($rows) => {
     // 1. Extract IDs and convert them to Numbers
     const actualIds = Array.from($rows)
       .map((row) => Number(Cypress.$(row).find("td").eq(0).text().trim()))
@@ -1042,7 +1042,7 @@ Then("The categories should be sorted by id in ascending order", () => {
 Then("The categories should be sorted by id in descending order", () => {
   categoryPage.assertCategoryTableHasData();
 
-  cy.get("table tbody tr").then(($rows) => {
+  categoryPage.tableRows.then(($rows) => {
     const actualIds = Array.from($rows)
       .map((row) => Number(Cypress.$(row).find("td").eq(0).text().trim()))
       .filter((id) => !isNaN(id));
@@ -1081,7 +1081,7 @@ Then("List update display only the {string} category", (expectedName) => {
 
   const expected = normalizeSpaces(expectedName);
 
-  cy.get("table tbody tr", { timeout: 10000 }).then(($rows) => {
+  categoryPage.tableRowsWith({ timeout: 10000 }).then(($rows) => {
     const dataRows = Array.from($rows).filter((row) => {
       const $tds = Cypress.$(row).find("td");
       if ($tds.length === 0) return false;
