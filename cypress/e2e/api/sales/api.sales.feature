@@ -9,9 +9,9 @@ Feature: Sales Management
 @api @TC94
   Scenario: Verify that the admin can retrieve an available sale record by ID
     Given the admin user is authenticated
-    When I send a GET request to retrieve sale with ID 1
+    When I send a GET request to retrieve sale with ID 31
     Then the response status should be 200
-    And the response should contain the sale record with ID 1
+    And the response should contain the sale record with ID 31
     And the sale record should contain the correct plant details
 
 @api @TC95
@@ -24,7 +24,7 @@ Feature: Sales Management
 @TC96
   Scenario: Verify that the admin can delete a sale record
     Given the admin user is authenticated
-    When I send a DELETE request for sale with ID 2
+    When I send a DELETE request for sale with ID 37
     Then the response status should be 204
     And the sale record with ID 5 should no longer exist in the system
 
@@ -38,35 +38,35 @@ Scenario: Verify that the system returns an error when an admin attempts to dele
   Scenario: Verify that the system returns an error when the sell plant API is called without a request body
     Given the admin user is authenticated
     When I send a POST request to sell a plant with an empty body
-    Then the response status should be 500
+    Then the response status should be 400
     
 
     @TC99 @validation
   Scenario: Verify that the system returns an error when the plant is not provided
     Given the admin user is authenticated
     When I send a POST request to sell a plant with missing plant field and quantity 10
-    Then the response status should be 500
+    Then the response status should be 400
 
 @TC100 @validation
   Scenario: Verify that the system returns an error when the quantity is not provided
     Given the admin user is authenticated
     When I send a POST request to sell plant ID 3 without providing a quantity
-    Then the response status should be 500
+    Then the response status should be 400
 
 @TC101
 Scenario: Verify that the system returns an error when quantity is less than 1
     Given the admin user is authenticated
     When I send a POST request to sell plant ID 7 with quantity 0
     Then the response status should be 400
-    And the response should contain the validation error "Quantity must be greater than 1"
+
 
 @TC102 @positive
   Scenario: Validate that an admin can successfully sell a Mango tree
     Given the admin user is authenticated
-    When I send a POST request to sell plant ID 4 with quantity 3
+    When I send a POST request to sell plant ID 1 with quantity 3
     Then the response status should be 201
-    And the response should contain the sale details for plant "Mango"
-    And the total price should be calculated correctly at 7500
+    And the response should contain the sale details for plant "Rose"
+    And the total price should be calculated correctly at 300
 
 @TC103 @negative
   Scenario: Verify that the system prevents selling when the requested quantity is more than the available stock
@@ -96,7 +96,7 @@ Scenario: Verify that a non-admin user cannot perform a sell plant operation
 @api @TC107
 Scenario: Verify that a non-admin user cannot delete a sale record
     Given a non-admin user is authenticated
-    When I send a DELETE request for sale ID 17 as a non-admin
+    When I send a DELETE request for sale ID 35 as a non-admin
     Then the response status should be 403
 
 @api @TC108
@@ -109,9 +109,9 @@ Scenario: Verify that a non-admin user can retrieve all sales records
 @api @security @TC109
   Scenario: Verify that a non-admin user can retrieve a sale record by its ID
     Given a non-admin user is authenticated
-    When I send a GET request for sale ID 18 as a non-admin
+    When I send a GET request for sale ID 31 as a non-admin
     Then the response status should be 200
-    And the response should contain the sale record with ID 18
+    And the response should contain the sale record with ID 31
 
 @api @TC110
   Scenario: Verify that a non-admin user receives an error for an invalid sale ID

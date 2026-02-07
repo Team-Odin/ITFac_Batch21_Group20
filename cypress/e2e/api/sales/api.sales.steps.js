@@ -131,7 +131,7 @@ Then(
   "the response should contain the sale details for plant {string}",
   (plantName) => {
     expect(apiResponse.body.plant.name).to.eq(plantName);
-    expect(apiResponse.body.plant.id).to.eq(4);
+    expect(apiResponse.body.plant.id).to.eq(1);
   },
 );
 
@@ -168,7 +168,17 @@ When("I request sales with page {int} and size {int}", (page, size) => {
 Then("the response should contain the correct paginated data", () => {
   expect(apiResponse.body.content).to.be.an("array");
   expect(apiResponse.body.pageable.pageNumber).to.eq(0);
-  expect(apiResponse.body.totalElements).to.eq(14);
+
+  SalesPage.getAuthTokenNonAdmin().then((token) => {
+    SalesPage.getAllSales(token).then((allSalesResponse) => {
+      const actualTotal = allSalesResponse.body.length;
+
+      expect(apiResponse.body.totalElements).to.eq(actualTotal);
+      cy.log(
+        `Verified: Paginated totalElements (${apiResponse.body.totalElements}) matches actual count (${actualTotal})`,
+      );
+    });
+  });
 });
 
 When(
