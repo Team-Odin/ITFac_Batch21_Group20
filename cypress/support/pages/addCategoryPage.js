@@ -19,6 +19,19 @@ class AddCategoryPage {
     return cy.get('a[href="/ui/categories"]').contains("Cancel");
   }
 
+  clickControl(name) {
+    const normalized = String(name ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (normalized === "save")
+      return this.saveButton.should("be.visible").click();
+    if (normalized === "cancel")
+      return this.cancelBtn.should("be.visible").click();
+
+    throw new Error(`Unknown add-category control: ${JSON.stringify(name)}`);
+  }
+
   addACategory(categoryValue) {
     this.categoryNameField.should("be.visible").clear().type(categoryValue);
   }

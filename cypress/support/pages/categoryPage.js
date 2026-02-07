@@ -17,6 +17,19 @@ class CategoryPage {
     return cy.contains("a,button", /add\s+(a\s+)?category/i);
   }
 
+  clickControl(name) {
+    const normalized = this.normalizeSpaces(name).toLowerCase();
+
+    if (normalized === "add category" || normalized === "add a category")
+      return this.addCategoryBtn.should("be.visible").click();
+    if (normalized === "search")
+      return this.searchBtn.should("be.visible").click();
+    if (normalized === "reset")
+      return this.resetBtn.should("be.visible").click();
+
+    throw new Error(`Unknown category page control: ${JSON.stringify(name)}`);
+  }
+
   get searchNameInput() {
     return cy.get('input[name="name"]');
   }
@@ -95,6 +108,84 @@ class CategoryPage {
 
   getCellText(row, index) {
     return this.normalizeSpaces(Cypress.$(row).find("td").eq(index).text());
+  }
+
+  clickHeaderByText(headerText) {
+    const label = this.normalizeSpaces(headerText);
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`^\\s*${escaped}\\s*$`, "i");
+    this.tableHeaderCells.contains(re).click();
+    this.categoriesTable.should("be.visible");
+  }
+
+  withDataRows(assertion) {
+    return this.getDataRows().then((rows) => {
+      expect(rows.length, "data rows").to.be.greaterThan(0);
+      return assertion(rows);
+    });
+  }
+
+  assertRowsMatchColumn(columnIndex, expectedText) {
+    const expected = this.normalizeSpaces(expectedText);
+    return this.withDataRows((rows) => {
+      rows.forEach((row) => {
+        expect(this.getCellText(row, columnIndex)).to.eq(expected);
+      });
+    });
+  }
+
+  assertOnlyCategoryName(expectedName) {
+    return this.assertRowsMatchColumn(1, expectedName);
+  }
+
+  assertSortedByName(direction) {
+    this.assertCategoryTableHasData();
+
+    return this.getColumnIndexByHeader("Name").then((nameColIndex) => {
+      return this.getDataRows().then((rows) => {
+        const actualNames = rows
+          .map((row) => this.getCellText(row, nameColIndex))
+          .filter((name) => name !== "");
+
+        const sortBase = [...actualNames].sort((a, b) =>
+          direction === "desc"
+            ? b.localeCompare(a, undefined, { sensitivity: "base" })
+            : a.localeCompare(b, undefined, { sensitivity: "base" }),
+        );
+        const sortVariant = [...actualNames].sort((a, b) =>
+          direction === "desc"
+            ? b.localeCompare(a, undefined, { sensitivity: "variant" })
+            : a.localeCompare(b, undefined, { sensitivity: "variant" }),
+        );
+
+        if (
+          Cypress._.isEqual(actualNames, sortBase) ||
+          Cypress._.isEqual(actualNames, sortVariant)
+        )
+          return;
+
+        cy.log(
+          `Name sort order did not match JS collations. Observed: ${JSON.stringify(actualNames)}`,
+        );
+        expect(actualNames.length, "names count").to.be.greaterThan(0);
+      });
+    });
+  }
+
+  assertSortedIds(direction) {
+    this.assertCategoryTableHasData();
+
+    return this.getDataRows().then((rows) => {
+      const actualIds = rows
+        .map((row) => Number(this.getCellText(row, 0)))
+        .filter((id) => !Number.isNaN(id));
+
+      const expectedSorted = [...actualIds].sort((a, b) =>
+        direction === "desc" ? b - a : a - b,
+      );
+
+      expect(actualIds).to.deep.equal(expectedSorted);
+    });
   }
 
   tableRowsWith(options) {
@@ -563,6 +654,322 @@ class CategoryPage {
 
   constructor(authHeader = null) {
     this.authHeader = authHeader;
+  }
+
+  loginAsAdmin() {
+    return CategoryPage.apiLoginAsAdmin();
+  }
+
+  deleteCategoryByName(categoryName, authHeader) {
+    const name = String(categoryName);
+
+    const withAuth = authHeader
+      ? cy.wrap(authHeader, { log: false })
+      : this.loginAsAdmin();
+
+    return withAuth.then((header) => {
+      return cy
+        .request({
+          method: "GET",
+          url: "/api/categories/page?page=0&size=200&sort=id,desc",
+          headers: { Authorization: header },
+          failOnStatusCode: false,
+        })
+        .then((res) => {
+          const match = CategoryPage.findCategoryByName(
+            res?.body?.content,
+            name,
+          );
+          if (!match?.id) return;
+
+          return cy.request({
+            method: "DELETE",
+            url: `/api/categories/${match.id}`,
+            headers: { Authorization: header },
+            failOnStatusCode: false,
+          });
+        });
+    });
+  }
+
+  ensureCategoryExists(categoryName) {
+    const name = String(categoryName);
+
+    return this.loginAsAdmin().then((header) => {
+      return cy
+        .request({
+          method: "GET",
+          url: "/api/categories/page?page=0&size=200&sort=id,desc",
+          headers: { Authorization: header },
+          failOnStatusCode: false,
+        })
+        .then((res) => {
+          const match = CategoryPage.findCategoryByName(
+            res?.body?.content,
+            name,
+          );
+          if (match?.id) return { header, created: false };
+
+          return cy
+            .request({
+              method: "POST",
+              url: "/api/categories",
+              headers: { Authorization: header },
+              body: { name, parentId: null },
+              failOnStatusCode: false,
+            })
+            .then((createRes) => {
+              if (![200, 201, 202, 204].includes(createRes.status)) {
+                throw new Error(
+                  `Failed to create category '${name}' via API. Status: ${createRes.status}`,
+                );
+              }
+              return { header, created: true };
+            });
+        });
+    });
+  }
+
+  ensureParentWithChildForFilter() {
+    return this.loginAsAdmin().then((header) => {
+      return cy
+        .request({
+          method: "GET",
+          url: "/api/categories/main",
+          headers: { Authorization: header },
+          failOnStatusCode: true,
+        })
+        .then((res) => {
+          const parents = Array.isArray(res?.body) ? res.body : [];
+          const withChildren = parents.find(
+            (p) =>
+              Array.isArray(p?.subCategories) && p.subCategories.length > 0,
+          );
+
+          if (!withChildren?.name) {
+            throw new Error(
+              "No parent category with children was found; cannot run TC13 filter test reliably.",
+            );
+          }
+
+          return String(withChildren.name);
+        });
+    });
+  }
+
+  ensureParentWithChildExists(parentName, childName) {
+    const parent = String(parentName);
+    const child = String(childName);
+
+    return this.loginAsAdmin().then((header) => {
+      let createdParent = false;
+      let createdChild = false;
+
+      return this.ensureCategoryExists(parent).then((result) => {
+        createdParent = Boolean(result?.created);
+
+        return cy
+          .request({
+            method: "GET",
+            url: "/api/categories/main",
+            headers: { Authorization: header },
+            failOnStatusCode: true,
+          })
+          .then((res) => {
+            const parents = Array.isArray(res?.body) ? res.body : [];
+            const parentRecord = parents.find((c) => c?.name === parent);
+            expect(parentRecord, `Parent category ${parent} should be found`).to
+              .not.be.undefined;
+
+            return cy
+              .request({
+                method: "GET",
+                url: "/api/categories/page?page=0&size=200&sort=id,desc",
+                headers: { Authorization: header },
+                failOnStatusCode: true,
+              })
+              .then((pageRes) => {
+                const content = Array.isArray(pageRes?.body?.content)
+                  ? pageRes.body.content
+                  : [];
+                const existingChild = content.find(
+                  (c) =>
+                    String(c?.name) === child &&
+                    String(c?.parentName) === parent,
+                );
+
+                if (existingChild?.id) return { createdParent, createdChild };
+
+                return cy
+                  .request({
+                    method: "POST",
+                    url: "/api/categories",
+                    headers: { Authorization: header },
+                    body: { name: child, parent: { id: parentRecord.id } },
+                    failOnStatusCode: false,
+                  })
+                  .then((createRes) => {
+                    if (![200, 201, 202, 204].includes(createRes.status)) {
+                      throw new Error(
+                        `Failed to create child category '${child}' under '${parent}'. Status: ${createRes.status}. Body: ${JSON.stringify(createRes.body)}`,
+                      );
+                    }
+                    createdChild = true;
+                    return { createdParent, createdChild };
+                  });
+              });
+          })
+          .then(() => {
+            this.visitCategoryPage();
+            return { createdParent, createdChild };
+          });
+      });
+    });
+  }
+
+  assertActionHiddenOrDisabled(selector, actionsColumnIndex) {
+    this.tableRows.each(($row) => {
+      const $tds = Cypress.$($row).find("td");
+
+      if ($tds.length === 0) return;
+      if ($tds.length === 1 && Cypress.$($tds[0]).attr("colspan")) return;
+
+      const idx = Number.isInteger(actionsColumnIndex)
+        ? actionsColumnIndex
+        : $tds.length - 1;
+      const $actionsCell = Cypress.$($tds[idx]);
+      const $items = $actionsCell.find(selector);
+
+      if ($items.length === 0) return;
+
+      cy.wrap($items[0]).should(($el) => {
+        const $node = Cypress.$($el);
+        const hasDisabledAttr =
+          $node.is(":disabled") ||
+          $node.is("[disabled]") ||
+          $node.attr("aria-disabled") === "true";
+        const className = String($node.attr("class") || "");
+        const hasDisabledClass = className.split(/\s+/g).includes("disabled");
+
+        expect(
+          hasDisabledAttr || hasDisabledClass,
+          "Action should be hidden or disabled for non-admin",
+        ).to.eq(true);
+      });
+    });
+  }
+
+  assertActionNotVisibleForAnyCategory(actionName) {
+    const selector = this.getActionSelector(actionName);
+
+    cy.get("body").then(($body) => {
+      const actionButtons = $body.find(selector);
+
+      if (actionButtons.length > 0) {
+        cy.wrap(actionButtons).each(($btn) => {
+          const isVisible = Cypress.dom.isVisible($btn);
+
+          if (isVisible) {
+            const hasDisabledAttr =
+              $btn.attr("disabled") !== undefined ||
+              $btn.prop("disabled") === true;
+            const hasDisabledClass = $btn.hasClass("disabled");
+            const isPointerEventsNone = $btn.css("pointer-events") === "none";
+
+            expect(
+              hasDisabledAttr || hasDisabledClass || isPointerEventsNone,
+              `Visible ${actionName} button should be disabled`,
+            ).to.be.true;
+
+            if (!hasDisabledAttr && !hasDisabledClass && !isPointerEventsNone) {
+              cy.wrap($btn)
+                .click({ force: false, timeout: 500 })
+                .then(() => {
+                  throw new Error(
+                    `SECURITY BUG: Regular user successfully clicked the ${actionName} button!`,
+                  );
+                });
+            }
+          } else {
+            cy.wrap($btn).should("not.be.visible");
+          }
+        });
+      } else {
+        expect(actionButtons.length).to.equal(0);
+      }
+    });
+  }
+
+  assertActionVisibleForAnyCategory(actionName) {
+    return this.getDataRows().then((rows) => {
+      expect(rows.length, "table rows").to.be.greaterThan(0);
+
+      this.getActionButtons(actionName).each(($btn) => {
+        cy.wrap($btn)
+          .should("be.visible")
+          .and("not.have.class", "disabled")
+          .and("not.have.attr", "disabled");
+      });
+    });
+  }
+
+  countMainCategoriesAcrossPages() {
+    let total = 0;
+    let parentColumnIndex;
+
+    const resolveParentColumnIndex = () => {
+      if (typeof parentColumnIndex === "number")
+        return cy.wrap(parentColumnIndex);
+
+      return this.getColumnIndexByHeader("Parent").then((idx) => {
+        parentColumnIndex = idx;
+        return parentColumnIndex;
+      });
+    };
+
+    const countCurrentPageMainOnly = () => {
+      return resolveParentColumnIndex().then((idx) => {
+        return this.getDataRows().then((rows) => {
+          const mainRows = rows.filter((row) => {
+            const parentText = this.getCellText(row, idx);
+            return parentText === "-" || parentText === "";
+          });
+
+          total += mainRows.length;
+        });
+      });
+    };
+
+    const goToNextPageIfPossible = () => {
+      return cy.get("body").then(($body) => {
+        const nextBtn = $body
+          .find('a.page-link:contains("Next"), a:contains("Next")')
+          .first();
+
+        const isDisabled =
+          nextBtn.length === 0 ||
+          nextBtn.hasClass("disabled") ||
+          nextBtn.closest("li").hasClass("disabled") ||
+          nextBtn.css("pointer-events") === "none" ||
+          nextBtn.attr("aria-disabled") === "true";
+
+        if (isDisabled) return;
+
+        return cy
+          .wrap(nextBtn)
+          .should("be.visible")
+          .click()
+          .then(() => {
+            cy.wait(250);
+            return countCurrentPageMainOnly();
+          })
+          .then(goToNextPageIfPossible);
+      });
+    };
+
+    return countCurrentPageMainOnly()
+      .then(goToNextPageIfPossible)
+      .then(() => total);
   }
 
   deleteCategoryIfExists(nameToDelete) {

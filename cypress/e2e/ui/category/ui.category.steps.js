@@ -21,261 +21,14 @@ let lastEnteredCategoryName;
 let lastExpectedValidationMessage;
 let lastValidationMessageWasMissing;
 
-const normalizeSpaces = (value) =>
-  String(value ?? "")
-    .replaceAll(/\s+/g, " ")
-    .trim();
+const normalize = (value) => categoryPage.normalizeSpaces(value);
 
-const escapeRegExp = (value) =>
-  String(value ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const clickControl = (name) => {
+  const normalized = normalize(name).toLowerCase();
+  if (normalized === "save" || normalized === "cancel")
+    return addCategoryPage.clickControl(normalized);
 
-const clickNamedControl = (name) => {
-  const normalized = normalizeSpaces(name).toLowerCase();
-
-  if (normalized === "add category" || normalized === "add a category")
-    return categoryPage.addCategoryBtn.should("be.visible").click();
-  if (normalized === "search")
-    return categoryPage.searchBtn.should("be.visible").click();
-  if (normalized === "reset")
-    return categoryPage.resetBtn.should("be.visible").click();
-  if (normalized === "save")
-    return addCategoryPage.saveButton.should("be.visible").click();
-  if (normalized === "cancel")
-    return addCategoryPage.cancelBtn.should("be.visible").click();
-
-  throw new Error(`Unknown control/button to click: ${JSON.stringify(name)}`);
-};
-
-const clickColumnHeader = (headerText) => {
-  const label = normalizeSpaces(headerText);
-  const re = new RegExp(`^\\s*${escapeRegExp(label)}\\s*$`, "i");
-  categoryPage.tableHeaderCells.contains(re).click();
-  categoryPage.categoriesTable.should("be.visible");
-};
-
-const withDataRows = (assertion) =>
-  categoryPage.getDataRows().then((rows) => {
-    expect(rows.length, "data rows").to.be.greaterThan(0);
-    return assertion(rows);
-  });
-
-const assertRowsMatchColumn = (columnIndex, expectedText) => {
-  const expected = normalizeSpaces(expectedText);
-  return withDataRows((rows) => {
-    rows.forEach((row) => {
-      expect(categoryPage.getCellText(row, columnIndex)).to.eq(expected);
-    });
-  });
-};
-
-const assertOnlyCategoryName = (expectedName) =>
-  assertRowsMatchColumn(1, expectedName);
-
-const assertSortedByName = (direction) => {
-  categoryPage.assertCategoryTableHasData();
-
-  return categoryPage.getColumnIndexByHeader("Name").then((nameColIndex) => {
-    return categoryPage.getDataRows().then((rows) => {
-      const actualNames = rows
-        .map((row) => categoryPage.getCellText(row, nameColIndex))
-        .filter((name) => name !== "");
-
-      const sortBase = [...actualNames].sort((a, b) =>
-        direction === "desc"
-          ? b.localeCompare(a, undefined, { sensitivity: "base" })
-          : a.localeCompare(b, undefined, { sensitivity: "base" }),
-      );
-      const sortVariant = [...actualNames].sort((a, b) =>
-        direction === "desc"
-          ? b.localeCompare(a, undefined, { sensitivity: "variant" })
-          : a.localeCompare(b, undefined, { sensitivity: "variant" }),
-      );
-
-      if (
-        Cypress._.isEqual(actualNames, sortBase) ||
-        Cypress._.isEqual(actualNames, sortVariant)
-      )
-        return;
-
-      cy.log(
-        `Name sort order did not match JS collations. Observed: ${JSON.stringify(actualNames)}`,
-      );
-      expect(actualNames.length, "names count").to.be.greaterThan(0);
-    });
-  });
-};
-
-const assertSortedIds = (direction) => {
-  categoryPage.assertCategoryTableHasData();
-
-  return categoryPage.getDataRows().then((rows) => {
-    const actualIds = rows
-      .map((row) => Number(categoryPage.getCellText(row, 0)))
-      .filter((id) => !Number.isNaN(id));
-
-    const expectedSorted = [...actualIds].sort((a, b) =>
-      direction === "desc" ? b - a : a - b,
-    );
-
-    expect(actualIds).to.deep.equal(expectedSorted);
-  });
-};
-
-const apiLoginAsAdmin = () => {
-  const username = Cypress.env("ADMIN_USER");
-  const password = Cypress.env("ADMIN_PASS");
-
-  if (!username || !password) {
-    throw new Error(
-      "Missing admin credentials. Set ADMIN_USER and ADMIN_PASS in your .env (or as CYPRESS_ADMIN_USER/CYPRESS_ADMIN_PASS).",
-    );
-  }
-
-  return cy
-    .request({
-      method: "POST",
-      url: "/api/auth/login",
-      body: { username, password },
-      failOnStatusCode: true,
-    })
-    .its("body")
-    .then((body) => {
-      const token = body?.token;
-      const tokenType = body?.tokenType || "Bearer";
-      if (!token) throw new Error("Login response missing token");
-      return `${tokenType} ${token}`;
-    });
-};
-
-const findCategoryByName = (categories, categoryName) => {
-  const target = String(categoryName).toLowerCase();
-  if (!Array.isArray(categories)) return undefined;
-  return categories.find(
-    (c) => String(c?.name).toLowerCase() === String(target),
-  );
-};
-
-const deleteCategoryByName = (categoryName, authHeader) => {
-  return cy
-    .request({
-      method: "GET",
-      url: "/api/categories/page?page=0&size=200&sort=id,desc",
-      headers: { Authorization: authHeader },
-      failOnStatusCode: false,
-    })
-    .then((res) => {
-      const content = res?.body?.content;
-      const match = Array.isArray(content)
-        ? content.find(
-            (c) =>
-              String(c?.name).toLowerCase() ===
-              String(categoryName).toLowerCase(),
-          )
-        : undefined;
-
-      if (!match?.id) return;
-
-      return cy.request({
-        method: "DELETE",
-        url: `/api/categories/${match.id}`,
-        headers: { Authorization: authHeader },
-        failOnStatusCode: false,
-      });
-    });
-};
-
-const ensureCategoryExists = (categoryName) => {
-  const name = String(categoryName);
-
-  return apiLoginAsAdmin().then((authHeader) => {
-    return cy
-      .request({
-        method: "GET",
-        url: "/api/categories/page?page=0&size=200&sort=id,desc",
-        headers: { Authorization: authHeader },
-        failOnStatusCode: false,
-      })
-      .then((res) => {
-        const match = findCategoryByName(res?.body?.content, name);
-        if (match?.id) return;
-
-        createdParentCategoryName = name;
-
-        return cy
-          .request({
-            method: "POST",
-            url: "/api/categories",
-            headers: { Authorization: authHeader },
-            body: { name, parentId: null },
-            failOnStatusCode: false,
-          })
-          .then((createRes) => {
-            if (![200, 201, 202, 204].includes(createRes.status)) {
-              throw new Error(
-                `Failed to create category '${name}' via API. Status: ${createRes.status}`,
-              );
-            }
-          });
-      });
-  });
-};
-
-const ensureParentWithChildForFilter = () => {
-  return apiLoginAsAdmin().then((authHeader) => {
-    return cy
-      .request({
-        method: "GET",
-        url: "/api/categories/main",
-        headers: { Authorization: authHeader },
-        failOnStatusCode: true,
-      })
-      .then((res) => {
-        const parents = Array.isArray(res?.body) ? res.body : [];
-        const withChildren = parents.find(
-          (p) => Array.isArray(p?.subCategories) && p.subCategories.length > 0,
-        );
-
-        if (!withChildren?.name) {
-          throw new Error(
-            "No parent category with children was found; cannot run TC13 filter test reliably.",
-          );
-        }
-
-        selectedParentFilterName = String(withChildren.name);
-      });
-  });
-};
-
-const assertActionHiddenOrDisabled = (selector) => {
-  categoryPage.tableRows.each(($row) => {
-    const $tds = Cypress.$($row).find("td");
-
-    if ($tds.length === 0) return;
-    if ($tds.length === 1 && Cypress.$($tds[0]).attr("colspan")) return;
-
-    const idx = Number.isInteger(actionsColumnIndex)
-      ? actionsColumnIndex
-      : $tds.length - 1;
-    const $actionsCell = Cypress.$($tds[idx]);
-    const $items = $actionsCell.find(selector);
-
-    if ($items.length === 0) return;
-
-    cy.wrap($items[0]).should(($el) => {
-      const $node = Cypress.$($el);
-      const hasDisabledAttr =
-        $node.is(":disabled") ||
-        $node.is("[disabled]") ||
-        $node.attr("aria-disabled") === "true";
-      const className = String($node.attr("class") || "");
-      const hasDisabledClass = className.split(/\s+/g).includes("disabled");
-
-      expect(
-        hasDisabledAttr || hasDisabledClass,
-        "Action should be hidden or disabled for non-admin",
-      ).to.eq(true);
-    });
-  });
+  return categoryPage.clickControl(normalized);
 };
 
 Before((info) => {
@@ -307,44 +60,53 @@ After((info) => {
   )
     return;
 
-  apiLoginAsAdmin().then((authHeader) => {
+  categoryPage.loginAsAdmin().then((authHeader) => {
     if (needsChildParentCleanup) {
       if (createdSubCategoryName) {
-        deleteCategoryByName(createdSubCategoryName, authHeader).then(() => {
-          createdSubCategoryName = undefined;
+        categoryPage
+          .deleteCategoryByName(createdSubCategoryName, authHeader)
+          .then(() => {
+            createdSubCategoryName = undefined;
 
-          if (createdParentCategoryName) {
-            deleteCategoryByName(createdParentCategoryName, authHeader).then(
-              () => {
-                createdParentCategoryName = undefined;
-              },
-            );
-          }
-        });
+            if (createdParentCategoryName) {
+              categoryPage
+                .deleteCategoryByName(createdParentCategoryName, authHeader)
+                .then(() => {
+                  createdParentCategoryName = undefined;
+                });
+            }
+          });
       } else if (createdParentCategoryName) {
-        deleteCategoryByName(createdParentCategoryName, authHeader).then(() => {
-          createdParentCategoryName = undefined;
-        });
+        categoryPage
+          .deleteCategoryByName(createdParentCategoryName, authHeader)
+          .then(() => {
+            createdParentCategoryName = undefined;
+          });
       }
     }
 
-    if (needsVegetablesCleanup) deleteCategoryByName("Vegetables", authHeader);
+    if (needsVegetablesCleanup)
+      categoryPage.deleteCategoryByName("Vegetables", authHeader);
     if (needsPlantsVegetablesCleanup) {
-      deleteCategoryByName("Vegetables", authHeader).then(() => {
-        deleteCategoryByName("Plants", authHeader);
+      categoryPage.deleteCategoryByName("Vegetables", authHeader).then(() => {
+        categoryPage.deleteCategoryByName("Plants", authHeader);
       });
     }
 
     if (needsTC03Cleanup && createdMainCategoryName) {
-      deleteCategoryByName(createdMainCategoryName, authHeader).then(() => {
-        createdMainCategoryName = undefined;
-      });
+      categoryPage
+        .deleteCategoryByName(createdMainCategoryName, authHeader)
+        .then(() => {
+          createdMainCategoryName = undefined;
+        });
     }
 
     if (needsTC12Cleanup && createdParentCategoryName) {
-      deleteCategoryByName(createdParentCategoryName, authHeader).then(() => {
-        createdParentCategoryName = undefined;
-      });
+      categoryPage
+        .deleteCategoryByName(createdParentCategoryName, authHeader)
+        .then(() => {
+          createdParentCategoryName = undefined;
+        });
     }
 
     selectedParentFilterName = undefined;
@@ -357,8 +119,8 @@ Then("I should see the {string} button", (buttonText) => {
     .should("be.visible")
     .invoke("text")
     .then((text) => {
-      expect(normalizeSpaces(text).toLowerCase()).to.eq(
-        normalizeSpaces(buttonText).toLowerCase(),
+      expect(normalize(text).toLowerCase()).to.eq(
+        normalize(buttonText).toLowerCase(),
       );
     });
 });
@@ -397,12 +159,13 @@ Then("Show {string} message", (successMessage) => {
 
 // TC04
 When("Click {string}", (controlText) => {
-  clickNamedControl(controlText);
+  clickControl(controlText);
 });
 
 Given("{string} category exists", (categoryName) => {
   cy.location("pathname").then((startPath) => {
-    return ensureCategoryExists(categoryName).then(() => {
+    return categoryPage.ensureCategoryExists(categoryName).then((result) => {
+      if (result?.created) createdParentCategoryName = String(categoryName);
       if (String(startPath).startsWith("/ui/categories/add")) {
         addCategoryPage.visitAddCategoryPage();
         return;
@@ -606,7 +369,7 @@ When("Scan top action area of the page", () => {
 });
 
 Then("The {string} button is NOT present", (buttonText) => {
-  const normalized = normalizeSpaces(buttonText);
+  const normalized = normalize(buttonText);
 
   if (normalized.toLowerCase() === "add category") {
     cy.get("body").then(($body) => {
@@ -631,23 +394,24 @@ Then("The {string} button is NOT present", (buttonText) => {
 
 // TC12-TC13
 When("Enter {string} in search bar", (categoryName) => {
-  const normalized = normalizeSpaces(categoryName);
+  const normalized = normalize(categoryName);
   categoryPage.searchNameInput.should("be.visible").clear();
 
   if (normalized.length > 0) categoryPage.searchNameInput.type(normalized);
 });
 
 When("Click {string} button", (buttonName) => {
-  clickNamedControl(buttonName);
+  clickControl(buttonName);
 });
 
 Then("List update display only the {string} category", (expectedName) => {
   categoryPage.categoriesTable.should("be.visible");
-  assertOnlyCategoryName(expectedName);
+  categoryPage.assertOnlyCategoryName(expectedName);
 });
 
 When("Select a parent from the {string} filter dropdown", (_dropdownLabel) => {
-  return ensureParentWithChildForFilter().then(() => {
+  return categoryPage.ensureParentWithChildForFilter().then((parentName) => {
+    selectedParentFilterName = parentName;
     categoryPage.visitCategoryPage();
     categoryPage.parentCategoryFilterDropdown
       .should("be.visible")
@@ -665,7 +429,10 @@ Then("List updates to show only children of the selected parent", () => {
   categoryPage.categoriesTable.should("be.visible");
 
   categoryPage.getColumnIndexByHeader("Parent").then((parentColIndex) => {
-    assertRowsMatchColumn(parentColIndex, selectedParentFilterName);
+    categoryPage.assertRowsMatchColumn(
+      parentColIndex,
+      selectedParentFilterName,
+    );
   });
 });
 
@@ -676,7 +443,7 @@ When('Inspect the "Actions" column of the category table', () => {
 
   categoryPage.tableHeaderRowCells.then(($ths) => {
     const headers = Array.from($ths).map((th) =>
-      normalizeSpaces(th.innerText).toLowerCase(),
+      normalize(th.innerText).toLowerCase(),
     );
 
     actionsColumnIndex = headers.indexOf("actions");
@@ -687,44 +454,49 @@ When('Inspect the "Actions" column of the category table', () => {
 Then("Edit icon are either hidden or visually disabled", () => {
   categoryPage.assertOnCategoriesPage();
   categoryPage.categoriesTable.should("be.visible");
-  assertActionHiddenOrDisabled(
+  categoryPage.assertActionHiddenOrDisabled(
     'a[title="Edit"], a[href*="/ui/categories/edit"]',
+    actionsColumnIndex,
   );
 });
 
 Then("Delete icon are either hidden or visually disabled", () => {
   categoryPage.assertOnCategoriesPage();
   categoryPage.categoriesTable.should("be.visible");
-  assertActionHiddenOrDisabled(
+  categoryPage.assertActionHiddenOrDisabled(
     'button[title="Delete"], form[action*="/ui/categories/delete"] button',
+    actionsColumnIndex,
   );
 });
 
 // TC16-TC17
 When("Click on the {string} column header to sort by name", (columnName) => {
-  if (columnName.toLowerCase() === "name") clickColumnHeader("Name");
+  if (columnName.toLowerCase() === "name")
+    categoryPage.clickHeaderByText("Name");
 });
 
 When(
   "Click on the {string} column header to sort by name again",
   (columnName) => {
-    if (columnName.toLowerCase() === "name") clickColumnHeader("Name");
+    if (columnName.toLowerCase() === "name")
+      categoryPage.clickHeaderByText("Name");
   },
 );
 
 When(
   "Click on the {string} column header to sort by nameagain",
   (columnName) => {
-    if (columnName.toLowerCase() === "name") clickColumnHeader("Name");
+    if (columnName.toLowerCase() === "name")
+      categoryPage.clickHeaderByText("Name");
   },
 );
 
 Then("The categories should be sorted by name in ascending order", () => {
-  return assertSortedByName("asc");
+  return categoryPage.assertSortedByName("asc");
 });
 
 Then("The categories should be sorted by name in descending order", () => {
-  return assertSortedByName("desc");
+  return categoryPage.assertSortedByName("desc");
 });
 
 When("Click on the {string} column header to sort by id", (columnName) => {
@@ -735,7 +507,7 @@ When("Click on the {string} column header to sort by id", (columnName) => {
       .eq(0)
       .invoke("text")
       .then((idBefore) => {
-        clickColumnHeader("ID");
+        categoryPage.clickHeaderByText("ID");
         categoryPage.tableRows
           .first()
           .find("td")
@@ -755,7 +527,7 @@ When(
         .eq(0)
         .invoke("text")
         .then((idBefore) => {
-          clickColumnHeader("ID");
+          categoryPage.clickHeaderByText("ID");
           categoryPage.tableRows
             .first()
             .find("td")
@@ -767,18 +539,16 @@ When(
 );
 
 Then("The categories should be sorted by id in ascending order", () => {
-  return assertSortedIds("asc");
+  return categoryPage.assertSortedIds("asc");
 });
 
 Then("The categories should be sorted by id in descending order", () => {
-  return assertSortedIds("desc");
+  return categoryPage.assertSortedIds("desc");
 });
 
 // TC18-TC24
 Given("{string} category doesn't exists", (categoryName) => {
-  apiLoginAsAdmin().then((authHeader) => {
-    deleteCategoryByName(categoryName, authHeader);
-  });
+  categoryPage.deleteCategoryByName(categoryName);
 });
 
 Then("List update display {string} message", (expectedMessage) => {
@@ -792,68 +562,12 @@ Then("List update display {string} message", (expectedMessage) => {
 Given(
   "A parent category {string} with child {string} exists",
   (parentName, childName) => {
-    const parent = String(parentName);
-    const child = String(childName);
-
-    return apiLoginAsAdmin().then((authHeader) => {
-      return ensureCategoryExists(parent).then(() => {
-        return cy
-          .request({
-            method: "GET",
-            url: "/api/categories/main",
-            headers: { Authorization: authHeader },
-            failOnStatusCode: true,
-          })
-          .then((res) => {
-            const parents = Array.isArray(res?.body) ? res.body : [];
-            const parentRecord = parents.find((c) => c?.name === parent);
-            expect(parentRecord, `Parent category ${parent} should be found`).to
-              .not.be.undefined;
-
-            return cy
-              .request({
-                method: "GET",
-                url: "/api/categories/page?page=0&size=200&sort=id,desc",
-                headers: { Authorization: authHeader },
-                failOnStatusCode: true,
-              })
-              .then((pageRes) => {
-                const content = Array.isArray(pageRes?.body?.content)
-                  ? pageRes.body.content
-                  : [];
-                const existingChild = content.find(
-                  (c) =>
-                    String(c?.name) === child &&
-                    String(c?.parentName) === parent,
-                );
-
-                if (existingChild?.id) return;
-
-                createdParentCategoryName = parent;
-                createdSubCategoryName = child;
-
-                return cy
-                  .request({
-                    method: "POST",
-                    url: "/api/categories",
-                    headers: { Authorization: authHeader },
-                    body: { name: child, parent: { id: parentRecord.id } },
-                    failOnStatusCode: false,
-                  })
-                  .then((createRes) => {
-                    if (![200, 201, 202, 204].includes(createRes.status)) {
-                      throw new Error(
-                        `Failed to create child category '${child}' under '${parent}'. Status: ${createRes.status}. Body: ${JSON.stringify(createRes.body)}`,
-                      );
-                    }
-                  });
-              });
-          })
-          .then(() => {
-            categoryPage.visitCategoryPage();
-          });
+    return categoryPage
+      .ensureParentWithChildExists(parentName, childName)
+      .then((result) => {
+        if (result?.createdParent) createdParentCategoryName = parentName;
+        if (result?.createdChild) createdSubCategoryName = childName;
       });
-    });
   },
 );
 
@@ -870,7 +584,7 @@ When(
 
 Then("The table should display only the {string} category", (expectedName) => {
   categoryPage.categoriesTable.should("be.visible");
-  assertOnlyCategoryName(expectedName);
+  categoryPage.assertOnlyCategoryName(expectedName);
 });
 
 Then(
@@ -878,8 +592,8 @@ Then(
   (categoryName, expectedParent) => {
     categoryPage.categoriesTable.should("be.visible");
 
-    const expectedName = normalizeSpaces(categoryName);
-    const expectedParentName = normalizeSpaces(expectedParent);
+    const expectedName = normalize(categoryName);
+    const expectedParentName = normalize(expectedParent);
 
     categoryPage.getColumnIndexByHeader("Parent").then((parentColIndex) => {
       categoryPage.getDataRows().then((rows) => {
@@ -908,13 +622,13 @@ Then(
   "Every row shown should have {string} as the Parent Category",
   (parentName) => {
     categoryPage.getColumnIndexByHeader("Parent").then((parentColIndex) => {
-      assertRowsMatchColumn(parentColIndex, parentName);
+      categoryPage.assertRowsMatchColumn(parentColIndex, parentName);
     });
   },
 );
 
 When("Click the {string} button", (buttonName) => {
-  clickNamedControl(buttonName);
+  clickControl(buttonName);
 });
 
 Then("The {string} filter should be cleared", (_filterName) => {
@@ -935,58 +649,12 @@ Then("The table should show all categories", () => {
 Then(
   "The {string} button should not be visible for any category",
   (buttonType) => {
-    const selector = categoryPage.getActionSelector(buttonType);
-
-    cy.get("body").then(($body) => {
-      const actionButtons = $body.find(selector);
-
-      if (actionButtons.length > 0) {
-        cy.wrap(actionButtons).each(($btn) => {
-          const isVisible = Cypress.dom.isVisible($btn);
-
-          if (isVisible) {
-            const hasDisabledAttr =
-              $btn.attr("disabled") !== undefined ||
-              $btn.prop("disabled") === true;
-            const hasDisabledClass = $btn.hasClass("disabled");
-            const isPointerEventsNone = $btn.css("pointer-events") === "none";
-
-            expect(
-              hasDisabledAttr || hasDisabledClass || isPointerEventsNone,
-              `Visible ${buttonType} button should be disabled`,
-            ).to.be.true;
-
-            if (!hasDisabledAttr && !hasDisabledClass && !isPointerEventsNone) {
-              cy.wrap($btn)
-                .click({ force: false, timeout: 500 })
-                .then(() => {
-                  throw new Error(
-                    `SECURITY BUG: Regular user successfully clicked the ${buttonType} button!`,
-                  );
-                });
-            }
-          } else {
-            cy.wrap($btn).should("not.be.visible");
-          }
-        });
-      } else {
-        expect(actionButtons.length).to.equal(0);
-      }
-    });
+    categoryPage.assertActionNotVisibleForAnyCategory(buttonType);
   },
 );
 
 Then("The {string} button should be visible for any category", (buttonType) => {
-  categoryPage.getDataRows().then((rows) => {
-    expect(rows.length, "table rows").to.be.greaterThan(0);
-  });
-
-  categoryPage.getActionButtons(buttonType).each(($btn) => {
-    cy.wrap($btn)
-      .should("be.visible")
-      .and("not.have.class", "disabled")
-      .and("not.have.attr", "disabled");
-  });
+  categoryPage.assertActionVisibleForAnyCategory(buttonType);
 });
 
 Then("System should navigate to the category edit page", () => {
@@ -1037,7 +705,7 @@ When("I leave the category name field empty", () => {
 });
 
 When('I click the "Save" button', () => {
-  clickNamedControl("Save");
+  clickControl("Save");
 });
 
 Then("I should see a validation error message {string}", (expectedMessage) => {
@@ -1058,7 +726,7 @@ Then("I should see a validation error message {string}", (expectedMessage) => {
       .should("be.visible")
       .invoke("text")
       .then((t) => {
-        expect(normalizeSpaces(t)).to.include(normalizeSpaces(expectedMessage));
+        expect(normalize(t)).to.include(normalize(expectedMessage));
       });
   });
 });
@@ -1066,7 +734,7 @@ Then("I should see a validation error message {string}", (expectedMessage) => {
 Then(
   "The system should not navigate away from the {string} page",
   (pageName) => {
-    const target = normalizeSpaces(pageName).toLowerCase();
+    const target = normalize(pageName).toLowerCase();
     const expectsAddPage = target.includes("add");
 
     cy.location("pathname").then((pathname) => {
@@ -1084,7 +752,7 @@ Then(
         categoryPage.categoriesTable.should("be.visible");
         categoryPage.categoriesTable.should(
           "contain.text",
-          normalizeSpaces(lastEnteredCategoryName),
+          normalize(lastEnteredCategoryName),
         );
       }
     });
@@ -1134,7 +802,7 @@ When("I select {string} from the parent category dropdown", (parentName) => {
 });
 
 Then("I should see a duplicate error message {string}", (expectedError) => {
-  const expected = normalizeSpaces(expectedError);
+  const expected = normalize(expectedError);
 
   cy.get("body").then(($body) => {
     if ($body.find(".alert-danger").length > 0) {
@@ -1142,7 +810,7 @@ Then("I should see a duplicate error message {string}", (expectedError) => {
         .should("be.visible")
         .invoke("text")
         .then((t) => {
-          expect(normalizeSpaces(t)).to.include(expected);
+          expect(normalize(t)).to.include(expected);
         });
       return;
     }
@@ -1154,7 +822,7 @@ Then("I should see a duplicate error message {string}", (expectedError) => {
         .should("be.visible")
         .invoke("text")
         .then((t) => {
-          expect(normalizeSpaces(t)).to.include(expected);
+          expect(normalize(t)).to.include(expected);
         });
     }
   });
@@ -1163,8 +831,8 @@ Then("I should see a duplicate error message {string}", (expectedError) => {
 Then(
   "The category {string} should only appear once in the table",
   (categoryName) => {
-    const expectedName = normalizeSpaces(categoryName);
-    const expectedParent = normalizeSpaces(selectedParentFilterName || "");
+    const expectedName = normalize(categoryName);
+    const expectedParent = normalize(selectedParentFilterName || "");
 
     categoryPage.visitCategoryPage();
 
@@ -1199,7 +867,7 @@ Then(
 );
 
 When('I click the "Cancel" button', () => {
-  clickNamedControl("Cancel");
+  clickControl("Cancel");
 });
 
 Then("I should be redirected to the {string} page", (pageName) => {
@@ -1220,7 +888,7 @@ Then("The system should not have created a new category", () => {
 Then(
   "The {string} sidebar item should have the {string} class",
   (_itemName, className) => {
-    const expectedClass = normalizeSpaces(className);
+    const expectedClass = normalize(className);
 
     categoryPage.sidebarCategoryLink.should("be.visible").then(($link) => {
       const $el = Cypress.$($link);
@@ -1255,61 +923,9 @@ When('I navigate to the "Categories" page', () => {
 });
 
 When("I count all categories across all pagination pages", () => {
-  accumulatedTableCount = 0;
-
-  let parentColumnIndex;
-
-  const resolveParentColumnIndex = () => {
-    if (typeof parentColumnIndex === "number")
-      return cy.wrap(parentColumnIndex);
-
-    return categoryPage.getColumnIndexByHeader("Parent").then((idx) => {
-      parentColumnIndex = idx;
-      return parentColumnIndex;
-    });
-  };
-
-  const countCurrentPageMainOnly = () => {
-    return resolveParentColumnIndex().then((idx) => {
-      return categoryPage.getDataRows().then((rows) => {
-        const mainRows = rows.filter((row) => {
-          const parentText = categoryPage.getCellText(row, idx);
-          return parentText === "-" || parentText === "";
-        });
-
-        accumulatedTableCount += mainRows.length;
-      });
-    });
-  };
-
-  const goToNextPageIfPossible = () => {
-    return cy.get("body").then(($body) => {
-      const nextBtn = $body
-        .find('a.page-link:contains("Next"), a:contains("Next")')
-        .first();
-
-      const isDisabled =
-        nextBtn.length === 0 ||
-        nextBtn.hasClass("disabled") ||
-        nextBtn.closest("li").hasClass("disabled") ||
-        nextBtn.css("pointer-events") === "none" ||
-        nextBtn.attr("aria-disabled") === "true";
-
-      if (isDisabled) return;
-
-      return cy
-        .wrap(nextBtn)
-        .should("be.visible")
-        .click()
-        .then(() => {
-          cy.wait(250);
-          return countCurrentPageMainOnly();
-        })
-        .then(goToNextPageIfPossible);
-    });
-  };
-
-  return countCurrentPageMainOnly().then(goToNextPageIfPossible);
+  return categoryPage.countMainCategoriesAcrossPages().then((count) => {
+    accumulatedTableCount = count;
+  });
 });
 
 Then("The total count should match the Dashboard summary", () => {
