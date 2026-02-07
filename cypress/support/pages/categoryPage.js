@@ -49,6 +49,54 @@ class CategoryPage {
     return cy.get("table tbody tr");
   }
 
+  normalizeSpaces(value) {
+    return String(value ?? "")
+      .replaceAll(/\s+/g, " ")
+      .trim();
+  }
+
+  getDataRows() {
+    return this.tableRows.then(($rows) => {
+      return Array.from($rows).filter((row) => {
+        const $tds = Cypress.$(row).find("td");
+        if ($tds.length === 0) return false;
+        if ($tds.length === 1 && Cypress.$($tds[0]).attr("colspan"))
+          return false;
+
+        const rowText = this.normalizeSpaces(row.innerText).toLowerCase();
+        if (rowText.includes("no category") || rowText.includes("no data"))
+          return false;
+
+        return true;
+      });
+    });
+  }
+
+  getColumnIndexByHeader(headerText) {
+    const target = this.normalizeSpaces(headerText).toLowerCase();
+
+    return this.tableHeaderCells.then(($ths) => {
+      const headers = Array.from($ths).map((th) =>
+        this.normalizeSpaces(Cypress.$(th).text()).toLowerCase(),
+      );
+      const index = headers.findIndex(
+        (h) => h === target || h.includes(target),
+      );
+
+      if (index < 0) {
+        throw new Error(
+          `Could not find table header '${headerText}'. Headers: ${headers.join(" | ")}`,
+        );
+      }
+
+      return index;
+    });
+  }
+
+  getCellText(row, index) {
+    return this.normalizeSpaces(Cypress.$(row).find("td").eq(index).text());
+  }
+
   tableRowsWith(options) {
     return cy.get("table tbody tr", options);
   }
@@ -85,6 +133,18 @@ class CategoryPage {
   get allDeleteButtons() {
     // Selects the anchor tags or buttons that have the title "Delete"
     return cy.get('a[title="Delete"], button[title="Delete"]');
+  }
+
+  getActionButtons(actionName) {
+    const action = this.normalizeSpaces(actionName).toLowerCase();
+    if (action === "edit") return this.allEditButtons;
+    if (action === "delete") return this.allDeleteButtons;
+    return cy.get(`a[title="${actionName}"], button[title="${actionName}"]`);
+  }
+
+  getActionSelector(actionName) {
+    const label = this.normalizeSpaces(actionName);
+    return `a[title="${label}"], button[title="${label}"]`;
   }
 
   visit() {
