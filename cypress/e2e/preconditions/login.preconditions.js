@@ -43,20 +43,41 @@ export function apiLoginAsUser() {
   const userUser = Cypress.env("USER_USER") || "testuser";
   const userPass = Cypress.env("USER_PASS") || "test123";
 
-  return cy.request({
-    method: "POST",
-    url: "/api/login",
-    // This sends the Authorization: Basic header required by your server
-    auth: {
-      username: userUser,
-      password: userPass
-    },
-    failOnStatusCode: false
-  }).then((response) => {
-    if (response.status !== 200) {
-      throw new Error(`Login failed for user ${userUser}. Status: ${response.status}`);
-    }
-    // Return the token (ensure the path matches your API's JSON response)
-    return `Bearer ${response.body.token}`;
-  });
+  return cy
+    .request({
+      method: "POST",
+      url: "/api/auth/login",
+      body: { username: userUser, password: userPass },
+      failOnStatusCode: false,
+    })
+    .then((response) => {
+      if (response.status === 200) {
+        const token = response?.body?.token;
+        const tokenType = response?.body?.tokenType || "Bearer";
+        if (!token) {
+          throw new Error("Login response missing token");
+        }
+        return `${tokenType} ${token}`;
+      }
+
+      return cy
+        .request({
+          method: "POST",
+          url: "/api/login",
+          auth: {
+            username: userUser,
+            password: userPass,
+          },
+          failOnStatusCode: false,
+        })
+        .then((fallback) => {
+          if (fallback.status !== 200) {
+            throw new Error(
+              `Login failed for user ${userUser}. Status: ${fallback.status}`,
+            );
+          }
+
+          return `Bearer ${fallback.body.token}`;
+        });
+    });
 }

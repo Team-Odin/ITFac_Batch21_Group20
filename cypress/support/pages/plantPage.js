@@ -125,16 +125,11 @@ class PlantPage {
         accept: "*/*",
       },
       body: {
-        id: 0,
+        id: Number(id),
         name: "updateName",
         price: 150,
         quantity: 25,
-        category: {
-          id: 0,
-          name: "Anthurium",
-          parent: "string",
-          subCategories: ["string"],
-        },
+        category: { id: 1 },
       },
       failOnStatusCode: false,
     });

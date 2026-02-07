@@ -4,6 +4,97 @@ Feature: Plant Management Module
 	I want to retrieve plant data via APIs
 	So that I can view plants in the system
 
+	@API/TC123
+	Scenario: API/TC123 Verify Plant List Retrieval (Non-Admin User)
+		Given Admin or User has valid JWT token
+		When Send GET request to: "/api/plants/paged?page=0&size=10"
+		Then Status Code: 200 OK
+		And Plant response contains a non-empty plant list
+
+	@API/TC124
+	Scenario: API/TC124 Verify Plant Details Retrieval by ID
+		Given Admin or User has valid JWT token
+		And Plant ID "1" exists
+		When Send GET request to: "/api/plants/1"
+		Then Status Code: 200 OK
+		And Plant response contains correct details for Plant ID 1
+
+	@API/TC125
+	Scenario: API/TC125 Verify Plant List Pagination (Non-Admin User)
+		Given Admin or User has valid JWT token
+		When Plant API request plants page 0 size 10
+		And Plant API request plants page 1 size 10
+		Then Plant API page responses have status 200
+		And Plant API responses contain unique Plant IDs across pages
+
+	@API/TC126
+	Scenario: API/TC126 Verify Search By Name (Admin)
+		Given Admin has valid JWT token
+		And Plant named "Cactus" exists
+		When Search plants by name "Cac"
+		Then Status Code: 200 OK
+		And Plant search results contain only plants matching "Cac"
+		And Plant search results include "Cactus"
+
+	@API/TC127
+	Scenario: API/TC127 Verify Search No Results (Admin)
+		Given Admin has valid JWT token
+		When Search plants by name "NoPlantFound123"
+		Then Status Code: 200 OK
+		And Plant response body is an empty list (or valid empty page object)
+
+	@API/TC128
+	Scenario: API/TC128 Verify Filter by Category ID (Admin)
+		Given Admin has valid JWT token
+		When Request plants filtered by Category ID 5
+		Then Status Code: 200 OK
+		And All returned plants have category association with ID 5
+
+	@API/TC129
+	Scenario: API/TC129 Verify Filter by Non-Existing Category ID (Admin)
+		Given Admin has valid JWT token
+		When Request plants filtered by Category ID 9999
+		Then Status Code: 404 Not Found
+		And Error message indicates category not found
+
+	@API/TC130
+	Scenario: API/TC130 Verify Edit Plant Details
+		Given Admin has valid JWT token
+		And Any Plant exists
+		When Send PUT request to that Plant with body:
+			"""
+			{
+				"price": 99.99
+			}
+			"""
+		Then Status Code: 200 OK
+		And Plant details retrieved subsequently show price 99.99
+
+	@API/TC131
+	Scenario: API/TC131 Verify Edit Plant Validation (Invalid Input)
+		Given Admin has valid JWT token
+		And Any Plant exists
+		When Send PUT request to that Plant with body:
+			"""
+			{
+				"name": "",
+				"price": -50
+			}
+			"""
+		Then Status Code: 400 Bad Request
+		And Plant validation errors include:
+			"""
+			Price must be greater than 0
+			Name is required
+			"""
+ 
+	@API/TC132
+	Scenario: API/TC132 Verify Plant Summary Data Retrieval
+		Given Admin has valid JWT token
+		When Send GET request to: "/api/plants/summary"
+		Then Status Code: 200 OK
+		And Plant summary response contains totalPlants and lowStockPlants
+
     @API/TC146
     Scenario: API/TC146 Verify that admin can retrieve the plant list
         Given Admin has valid JWT token
@@ -104,93 +195,3 @@ Feature: Plant Management Module
         Given a non-admin user is authenticated
         When the user attempts to get a plant with invalid ID "1000"
         Then the API should return a 404 Not Found status
-	@API/TC123
-	Scenario: API/TC123 Verify Plant List Retrieval (Non-Admin User)
-		Given Admin or User has valid JWT token
-		When Send GET request to: "/api/plants/paged?page=0&size=10"
-		Then Status Code: 200 OK
-		And Plant response contains a non-empty plant list
-
-	@API/TC124
-	Scenario: API/TC124 Verify Plant Details Retrieval by ID
-		Given Admin or User has valid JWT token
-		And Plant ID "1" exists
-		When Send GET request to: "/api/plants/1"
-		Then Status Code: 200 OK
-		And Plant response contains correct details for Plant ID 1
-
-	@API/TC125
-	Scenario: API/TC125 Verify Plant List Pagination (Non-Admin User)
-		Given Admin or User has valid JWT token
-		When Plant API request plants page 0 size 10
-		And Plant API request plants page 1 size 10
-		Then Plant API page responses have status 200
-		And Plant API responses contain unique Plant IDs across pages
-
-	@API/TC126
-	Scenario: API/TC126 Verify Search By Name (Admin)
-		Given Admin has valid JWT token
-		And Plant named "Cactus" exists
-		When Search plants by name "Cac"
-		Then Status Code: 200 OK
-		And Plant search results contain only plants matching "Cac"
-		And Plant search results include "Cactus"
-
-	@API/TC127
-	Scenario: API/TC127 Verify Search No Results (Admin)
-		Given Admin has valid JWT token
-		When Search plants by name "NoPlantFound123"
-		Then Status Code: 200 OK
-		And Plant response body is an empty list (or valid empty page object)
-
-	@API/TC128
-	Scenario: API/TC128 Verify Filter by Category ID (Admin)
-		Given Admin has valid JWT token
-		When Request plants filtered by Category ID 5
-		Then Status Code: 200 OK
-		And All returned plants have category association with ID 5
-
-	@API/TC129
-	Scenario: API/TC129 Verify Filter by Non-Existing Category ID (Admin)
-		Given Admin has valid JWT token
-		When Request plants filtered by Category ID 9999
-		Then Status Code: 404 Not Found
-		And Error message indicates category not found
-
-	@API/TC130
-	Scenario: API/TC130 Verify Edit Plant Details
-		Given Admin has valid JWT token
-		And Any Plant exists
-		When Send PUT request to that Plant with body:
-			"""
-			{
-				"price": 99.99
-			}
-			"""
-		Then Status Code: 200 OK
-		And Plant details retrieved subsequently show price 99.99
-
-	@API/TC131
-	Scenario: API/TC131 Verify Edit Plant Validation (Invalid Input)
-		Given Admin has valid JWT token
-		And Any Plant exists
-		When Send PUT request to that Plant with body:
-			"""
-			{
-				"name": "",
-				"price": -50
-			}
-			"""
-		Then Status Code: 400 Bad Request
-		And Plant validation errors include:
-			"""
-			Price must be greater than 0
-			Name is required
-			"""
- 
-	@API/TC132
-	Scenario: API/TC132 Verify Plant Summary Data Retrieval
-		Given Admin has valid JWT token
-		When Send GET request to: "/api/plants/summary"
-		Then Status Code: 200 OK
-		And Plant summary response contains totalPlants and lowStockPlants
