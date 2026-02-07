@@ -291,154 +291,121 @@ Then("Plant validation errors include:", (docString) => {
 });
 
 // =============================================================
-// API/TC19 + API/TC20 Verify Edit Plant (and validation)
+// API/TC123 + API/TC124 Verify List Retrieval and Details by ID
 // =============================================================
 
-Given("Any Plant exists", () => {
+Given("Plant ID {string} exists", (id) => {
+  const plantId = Number(id);
+  if (!Number.isFinite(plantId)) {
+    throw new TypeError(
+      `Invalid plant id '${typeof id === "string" ? id : safeStringify(id)}'`,
+    );
+  }
+
   const header = getAuthHeaderOrThrow();
 
   return cy
     .request({
       method: "GET",
-      url: "/api/plants/paged?page=0&size=200",
+      url: `/api/plants/${plantId}`,
       headers: { Authorization: header },
       failOnStatusCode: false,
     })
     .then((res) => {
       if (res.status !== 200) {
         throw new Error(
-          `Unable to load plants to satisfy precondition. GET /api/plants/paged returned status ${res.status}`,
+          `Plant id '${plantId}' does not exist or is not accessible. Status: ${res.status}`,
         );
       }
 
-      const content = getPageContentArray(res.body);
-      if (!Array.isArray(content)) {
-        throw new TypeError(
-          `Expected plants list response to be an array or page object. Got: ${safeStringify(res.body)}`,
-        );
-      }
-      if (content.length === 0) {
-        throw new Error(
-          "No plants exist in the system; cannot run edit/validation tests without seed data.",
-        );
-      }
-
-      const first = content.find((p) => Number.isFinite(Number(p?.id)));
-      if (!first) {
-        throw new TypeError(
-          `Unable to find a plant with a numeric id in response: ${safeStringify(content[0])}`,
-        );
-      }
-
-      return cy
-        .wrap({ id: Number(first.id) }, { log: false })
-        .as("activePlant");
+      // Keep expected values for later assertions.
+      cy.wrap(
+        {
+          id: Number(res?.body?.id),
+          name:
+            res?.body?.name === undefined || res?.body?.name === null
+              ? ""
+              : String(res.body.name),
+        },
+        { log: false },
+      ).as("expectedPlant");
     });
 });
 
-When("Send PUT request to that Plant with body:", (docString) => {
-  const header = getAuthHeaderOrThrow();
-  const patch = parseJsonDocString(docString);
+Then("Plant response contains a non-empty plant list", () => {
+  return cy.get("@lastResponse").then((res) => {
+    const body = res?.body;
+    const content = getPageContentArray(body);
 
-  return cy.get("@activePlant").then((plant) => {
-    const id = Number(plant?.id);
-    if (!Number.isFinite(id)) {
-      throw new TypeError(
-        "Missing active plant id; ensure 'Any Plant exists' ran first.",
-      );
-    }
-
-    // PUT often expects a full entity; fetch current state and merge.
-    return cy
-      .request({
-        method: "GET",
-        url: `/api/plants/${id}`,
-        headers: { Authorization: header },
-        failOnStatusCode: false,
-      })
-      .then((detail) => {
-        const base = detail.status === 200 && detail.body ? detail.body : {};
-        const body = { ...base, ...patch };
-
-        return cy
-          .request({
-            method: "PUT",
-            url: `/api/plants/${id}`,
-            headers: { Authorization: header },
-            body,
-            failOnStatusCode: false,
-          })
-          .then((res) => {
-            return cy.wrap(res, { log: false }).as("lastResponse");
-          });
-      });
+    expect(content, "plants content array").to.be.an("array");
+    expect(content.length, "plants count").to.be.greaterThan(0);
   });
 });
 
-Then(
-  "Plant details retrieved subsequently show price {float}",
-  (expectedPrice) => {
-    const price = Number(expectedPrice);
-    if (!Number.isFinite(price)) {
-      throw new TypeError(
-        `Invalid expected price '${typeof expectedPrice === "string" ? expectedPrice : safeStringify(expectedPrice)}'`,
-      );
-    }
+Then("Plant response contains correct details for Plant ID {int}", (id) => {
+  const expectedId = Number(id);
 
-    const header = getAuthHeaderOrThrow();
-
-    return cy.get("@activePlant").then((plant) => {
-      const id = Number(plant?.id);
-      if (!Number.isFinite(id)) {
-        throw new TypeError(
-          "Missing active plant id; ensure 'Any Plant exists' ran first.",
-        );
-      }
-
-      return cy
-        .request({
-          method: "GET",
-          url: `/api/plants/${id}`,
-          headers: { Authorization: header },
-          failOnStatusCode: false,
-        })
-        .then((detail) => {
-          expect(detail.status).to.eq(200);
-
-          const actual = Number(detail?.body?.price);
-          expect(
-            Number.isFinite(actual),
-            `Expected response to have numeric price. Actual: ${safeStringify(detail?.body?.price)}`,
-          ).to.eq(true);
-
-          expect(actual).to.be.closeTo(price, 0.0001);
-        });
-    });
-  },
-);
-
-// =============================================================
-// API/TC21 Verify Plant Summary Data Retrieval
-// =============================================================
-
-Then("Plant summary response contains totalPlants and lowStockPlants", () => {
   return cy.get("@lastResponse").then((res) => {
-    expect(res, "lastResponse should exist").to.exist;
+    expect(res, "lastResponse").to.exist;
     expect(res.status).to.eq(200);
     expect(res.body, "response body").to.exist;
 
-    const total = Number(res.body?.totalPlants);
-    const low = Number(res.body?.lowStockPlants);
+    expect(Number(res.body.id)).to.eq(expectedId);
 
-    expect(Number.isFinite(total), "totalPlants is a number").to.eq(true);
-    expect(Number.isFinite(low), "lowStockPlants is a number").to.eq(true);
-    expect(total, "totalPlants").to.be.at.least(0);
-    expect(low, "lowStockPlants").to.be.at.least(0);
+    return cy.get("@expectedPlant").then((expected) => {
+      if (expected?.name) {
+        expect(String(res.body.name)).to.eq(String(expected.name));
+      } else {
+        // At minimum, require the API to return a non-empty name.
+        expect(String(res.body.name ?? "").trim(), "plant name").to.not.eq("");
+      }
+    });
   });
 });
 
 // =============================================================
-// API/TC15 + API/TC16 Verify Search By Name (and no results)
+// API/TC125 Verify Plant List Pagination
+// =============================================================
+
+When("Plant API request plants page {int} size {int}", (page, size) => {
+  const p = Number(page);
+  const s = Number(size);
+  if (!Number.isFinite(p) || p < 0)
+    throw new TypeError(
+      `Invalid page: ${typeof page === "string" ? page : safeStringify(page)}`,
+    );
+  if (!Number.isFinite(s) || s < 1)
+    throw new TypeError(
+      `Invalid size: ${typeof size === "string" ? size : safeStringify(size)}`,
+    );
+
+  const header = getAuthHeaderOrThrow();
+
+  return cy
+    .request({
+      method: "GET",
+      url: `/api/plants/paged?page=${p}&size=${s}`,
+      headers: { Authorization: header },
+      failOnStatusCode: false,
+    })
+    .then((res) => {
+      return cy.wrap(res, { log: false }).as(`plantPage${p}`);
+    });
+});
+
+Then("Plant API page responses have status {int}", (status) => {
+  const expectedStatus = Number(status);
+
+  return cy.get("@plantPage0").then((res0) => {
+    expect(res0?.status, "page 0 status").to.eq(expectedStatus);
+    return cy.get("@plantPage1").then((res1) => {
+      expect(res1?.status, "page 1 status").to.eq(expectedStatus);
+    });
+  });
+});
+
+// =============================================================
+// API/TC126 + API/TC127 Verify Search By Name (and no results)
 // =============================================================
 
 Given("Plant named {string} exists", (plantName) => {
@@ -578,7 +545,7 @@ Then(
 );
 
 // =============================================================
-// API/TC17 + API/TC18 Verify Filter by Category ID
+// API/TC128 + API/TC129 Verify Filter by Category ID
 // =============================================================
 
 When("Request plants filtered by Category ID {int}", (categoryId) => {
@@ -707,116 +674,149 @@ Then("Error message indicates category not found", () => {
 });
 
 // =============================================================
-// API/TC12 + API/TC13 Verify List Retrieval and Details by ID
+// API/TC130 + API/TC131 Verify Edit Plant (and validation)
 // =============================================================
 
-Given("Plant ID {string} exists", (id) => {
-  const plantId = Number(id);
-  if (!Number.isFinite(plantId)) {
-    throw new TypeError(
-      `Invalid plant id '${typeof id === "string" ? id : safeStringify(id)}'`,
-    );
-  }
-
+Given("Any Plant exists", () => {
   const header = getAuthHeaderOrThrow();
 
   return cy
     .request({
       method: "GET",
-      url: `/api/plants/${plantId}`,
+      url: "/api/plants/paged?page=0&size=200",
       headers: { Authorization: header },
       failOnStatusCode: false,
     })
     .then((res) => {
       if (res.status !== 200) {
         throw new Error(
-          `Plant id '${plantId}' does not exist or is not accessible. Status: ${res.status}`,
+          `Unable to load plants to satisfy precondition. GET /api/plants/paged returned status ${res.status}`,
         );
       }
 
-      // Keep expected values for later assertions.
-      cy.wrap(
-        {
-          id: Number(res?.body?.id),
-          name:
-            res?.body?.name === undefined || res?.body?.name === null
-              ? ""
-              : String(res.body.name),
-        },
-        { log: false },
-      ).as("expectedPlant");
+      const content = getPageContentArray(res.body);
+      if (!Array.isArray(content)) {
+        throw new TypeError(
+          `Expected plants list response to be an array or page object. Got: ${safeStringify(res.body)}`,
+        );
+      }
+      if (content.length === 0) {
+        throw new Error(
+          "No plants exist in the system; cannot run edit/validation tests without seed data.",
+        );
+      }
+
+      const first = content.find((p) => Number.isFinite(Number(p?.id)));
+      if (!first) {
+        throw new TypeError(
+          `Unable to find a plant with a numeric id in response: ${safeStringify(content[0])}`,
+        );
+      }
+
+      return cy
+        .wrap({ id: Number(first.id) }, { log: false })
+        .as("activePlant");
     });
 });
 
-Then("Plant response contains a non-empty plant list", () => {
-  return cy.get("@lastResponse").then((res) => {
-    const body = res?.body;
-    const content = getPageContentArray(body);
+When("Send PUT request to that Plant with body:", (docString) => {
+  const header = getAuthHeaderOrThrow();
+  const patch = parseJsonDocString(docString);
 
-    expect(content, "plants content array").to.be.an("array");
-    expect(content.length, "plants count").to.be.greaterThan(0);
+  return cy.get("@activePlant").then((plant) => {
+    const id = Number(plant?.id);
+    if (!Number.isFinite(id)) {
+      throw new TypeError(
+        "Missing active plant id; ensure 'Any Plant exists' ran first.",
+      );
+    }
+
+    // PUT often expects a full entity; fetch current state and merge.
+    return cy
+      .request({
+        method: "GET",
+        url: `/api/plants/${id}`,
+        headers: { Authorization: header },
+        failOnStatusCode: false,
+      })
+      .then((detail) => {
+        const base = detail.status === 200 && detail.body ? detail.body : {};
+        const body = { ...base, ...patch };
+
+        return cy
+          .request({
+            method: "PUT",
+            url: `/api/plants/${id}`,
+            headers: { Authorization: header },
+            body,
+            failOnStatusCode: false,
+          })
+          .then((res) => {
+            return cy.wrap(res, { log: false }).as("lastResponse");
+          });
+      });
   });
 });
 
-Then("Plant response contains correct details for Plant ID {int}", (id) => {
-  const expectedId = Number(id);
+Then(
+  "Plant details retrieved subsequently show price {float}",
+  (expectedPrice) => {
+    const price = Number(expectedPrice);
+    if (!Number.isFinite(price)) {
+      throw new TypeError(
+        `Invalid expected price '${typeof expectedPrice === "string" ? expectedPrice : safeStringify(expectedPrice)}'`,
+      );
+    }
 
+    const header = getAuthHeaderOrThrow();
+
+    return cy.get("@activePlant").then((plant) => {
+      const id = Number(plant?.id);
+      if (!Number.isFinite(id)) {
+        throw new TypeError(
+          "Missing active plant id; ensure 'Any Plant exists' ran first.",
+        );
+      }
+
+      return cy
+        .request({
+          method: "GET",
+          url: `/api/plants/${id}`,
+          headers: { Authorization: header },
+          failOnStatusCode: false,
+        })
+        .then((detail) => {
+          expect(detail.status).to.eq(200);
+
+          const actual = Number(detail?.body?.price);
+          expect(
+            Number.isFinite(actual),
+            `Expected response to have numeric price. Actual: ${safeStringify(detail?.body?.price)}`,
+          ).to.eq(true);
+
+          expect(actual).to.be.closeTo(price, 0.0001);
+        });
+    });
+  },
+);
+
+// =============================================================
+// API/TC132 Verify Plant Summary Data Retrieval
+// =============================================================
+
+Then("Plant summary response contains totalPlants and lowStockPlants", () => {
   return cy.get("@lastResponse").then((res) => {
-    expect(res, "lastResponse").to.exist;
+    expect(res, "lastResponse should exist").to.exist;
     expect(res.status).to.eq(200);
     expect(res.body, "response body").to.exist;
 
-    expect(Number(res.body.id)).to.eq(expectedId);
+    const total = Number(res.body?.totalPlants);
+    const low = Number(res.body?.lowStockPlants);
 
-    return cy.get("@expectedPlant").then((expected) => {
-      if (expected?.name) {
-        expect(String(res.body.name)).to.eq(String(expected.name));
-      } else {
-        // At minimum, require the API to return a non-empty name.
-        expect(String(res.body.name ?? "").trim(), "plant name").to.not.eq("");
-      }
-    });
-  });
-});
-
-// =============================================================
-// API/TC14 Verify Plant List Pagination
-// =============================================================
-
-When("Plant API request plants page {int} size {int}", (page, size) => {
-  const p = Number(page);
-  const s = Number(size);
-  if (!Number.isFinite(p) || p < 0)
-    throw new TypeError(
-      `Invalid page: ${typeof page === "string" ? page : safeStringify(page)}`,
-    );
-  if (!Number.isFinite(s) || s < 1)
-    throw new TypeError(
-      `Invalid size: ${typeof size === "string" ? size : safeStringify(size)}`,
-    );
-
-  const header = getAuthHeaderOrThrow();
-
-  return cy
-    .request({
-      method: "GET",
-      url: `/api/plants/paged?page=${p}&size=${s}`,
-      headers: { Authorization: header },
-      failOnStatusCode: false,
-    })
-    .then((res) => {
-      return cy.wrap(res, { log: false }).as(`plantPage${p}`);
-    });
-});
-
-Then("Plant API page responses have status {int}", (status) => {
-  const expectedStatus = Number(status);
-
-  return cy.get("@plantPage0").then((res0) => {
-    expect(res0?.status, "page 0 status").to.eq(expectedStatus);
-    return cy.get("@plantPage1").then((res1) => {
-      expect(res1?.status, "page 1 status").to.eq(expectedStatus);
-    });
+    expect(Number.isFinite(total), "totalPlants is a number").to.eq(true);
+    expect(Number.isFinite(low), "lowStockPlants is a number").to.eq(true);
+    expect(total, "totalPlants").to.be.at.least(0);
+    expect(low, "lowStockPlants").to.be.at.least(0);
   });
 });
 
