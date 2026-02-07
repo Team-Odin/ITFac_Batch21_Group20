@@ -1,6 +1,8 @@
 class CategoryPage {
   get addCategoryBtn() {
-    return cy.get('a[href="/ui/categories/add"]');
+    // Prefer a resilient locator based on the visible control label.
+    // UI text may be "Add Category" or "Add A Category".
+    return cy.contains("a,button", /add\s+(a\s+)?category/i);
   }
 
   get searchNameInput() {
@@ -27,8 +29,44 @@ class CategoryPage {
     return cy.get("table");
   }
 
+  get paginationInfo() {
+    return cy.get(".dataTables_info, .pagination-summary"); // Adjust selector to your UI
+  }
+
+  get tableRows() {
+    return cy.get("table tbody tr");
+  }
+
+  get nextPageBtn() {
+    // Selects the 'Next' link specifically if it's not disabled
+    return cy.get("li.next:not(.disabled) a");
+  }
+
+  get sidebarCategoryLink() {
+    // Prefer the actual navigation link to the Categories page.
+    return cy
+      .get('a[href="/ui/categories"], a[href^="/ui/categories?"]')
+      .contains(/categories/i);
+  }
+
+  editBtnByNameXPath(name) {
+    return cy.xpath(`//tr[td[contains(text(), "${name}")]]//a[@title="Edit"]`);
+  }
+
+  get allEditButtons() {
+    // Selects the anchor tags that have the title "Edit"
+    return cy.get('a[title="Edit"]');
+  }
+
+  get allDeleteButtons() {
+    // Selects the anchor tags or buttons that have the title "Delete"
+    return cy.get('a[title="Delete"], button[title="Delete"]');
+  }
+
   visit() {
-    cy.visit("/ui/categories");
+    // Categories page can be slow to fully load on remote/shared environments.
+    // Override the default visit timeout for this page to reduce flakiness.
+    cy.visit("/ui/categories", { timeout: 60000 });
   }
 
   visitCategoryPage() {
@@ -57,8 +95,24 @@ class CategoryPage {
       });
   }
 
+  get idSortHeader() {
+    // Targets the link inside the TH specifically for ID
+    return cy.get("th").contains("a", "ID");
+  }
+
+  getTableIds() {
+    // Extracts the text from the first column (ID) of every row
+    return cy.get("table tbody tr td:first-child").then(($cells) => {
+      return Cypress._.map($cells, (el) => parseInt(el.innerText));
+    });
+  }
+
   getCategoryTableRows() {
     return cy.get("table tbody tr");
+  }
+
+  get categoryTableBody() {
+    return cy.get("table tbody");
   }
 
   getCategoryRowCount() {
@@ -234,12 +288,20 @@ class CategoryPage {
       return cy.wrap(null, { log: false });
     }
 
+    // Backend constraint: category name must be 3..10 characters.
+    // Generate a short, deterministic run id + 2-char suffix => length 9.
+    const runId = (Date.now() % 2176782336).toString(36).padStart(6, "0");
+
     const indices = Array.from({ length: howMany }, (_, i) => i);
     return cy.wrap(indices, { log: false }).each((i) => {
       const idx =
         typeof i === "number" || typeof i === "string" ? i : JSON.stringify(i);
-      const unique = Math.random().toString(16).slice(2);
-      const categoryName = `AutoTestCat_${Date.now()}_${unique}_${idx}`;
+
+      const suffix = (Number(idx) % 1296)
+        .toString(36)
+        .padStart(2, "0")
+        .slice(-2);
+      const categoryName = `C${runId}${suffix}`;
       return CategoryPage.apiCreateMainCategory(authHeader, categoryName);
     });
   }
@@ -248,8 +310,11 @@ class CategoryPage {
     const howMany = Number(count);
     if (!Number.isFinite(howMany) || howMany <= 0) return;
 
+    const runId = (Date.now() % 2176782336).toString(36).padStart(6, "0");
+
     for (let i = 0; i < howMany; i++) {
-      const categoryName = `AutoTestCat_${Date.now()}_${i}`;
+      const suffix = (Number(i) % 1296).toString(36).padStart(2, "0").slice(-2);
+      const categoryName = `C${runId}${suffix}`;
       this.addCategoryBtn.should("be.visible").click();
       cy.get('input[id="name"]')
         .should("be.visible")

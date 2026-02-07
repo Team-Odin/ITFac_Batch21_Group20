@@ -122,14 +122,38 @@ To ensure the database is clean after tests (and optionally before), Cypress can
 
 - `DB_RESET_ON_RUN` (default: auto-enabled for localhost DB) — reset DB on `before:run`
 - `DB_RESET_AFTER_RUN` (default: auto-enabled for localhost DB) — reset DB on `after:run`
+- `DB_RESET_BEFORE_SPEC` (default: `false`) — reset DB on `before:spec` (before each spec file)
+- `DB_RESET_AFTER_SPEC` (default: `false`) — reset DB on `after:spec` (after each spec file)
 - `DB_RESET_SQL_FILE` (default: `sql/sample_plant_data_full.sql`) — custom SQL reset file
 - `DB_RESET_ALLOW_NON_LOCAL` (default: `false`) — allow DB resets against non-local hosts (use with caution)
 
-Th# Clean test artifacts:
+### Clean test artifacts
 
 ```bash
 npm run clean
 ```
+
+## CI (GitHub Actions) & Allure Report
+
+This repo’s GitHub Actions workflow generates an Allure HTML report and uploads it as an artifact on every run.
+
+### Where to find the report
+
+- Open the workflow run in GitHub → Artifacts → download `test-artifacts`.
+- The HTML report is inside `allure-report/` (open `allure-report/index.html`).
+
+### When the report is deployed to GitHub Pages
+
+Deployment to Pages is intentionally **push-only** (not pull requests).
+
+- Deployed on `push` to `main`, `master`, or `feature/workflow-test`.
+- Not deployed on `pull_request` runs (PR runs still upload the artifact).
+
+If you expect a Pages deploy but don’t see it, confirm:
+
+1. The workflow run is a `push` run (not `pull_request`).
+2. GitHub Pages is enabled for the repo and set to deploy from the `gh-pages` branch.
+3. The workflow has permission to push to `gh-pages` (uses `GITHUB_TOKEN`).
 
 ## Project Structure
 
@@ -185,4 +209,8 @@ qa-training-app-tests/
 - For remote: Check network connectivity and firewall rules
 - Ensure special characters in password are not causing issues (wrap values in quotes in `.env` if needed)
 
+### Run by tag (example)
+
+```bash
 npx cypress run --env tags="@API/TC30"
+```

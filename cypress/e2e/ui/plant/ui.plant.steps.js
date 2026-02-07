@@ -4,7 +4,11 @@ import {
   loginAsUser,
 } from "../../preconditions/login.preconditions";
 import { plantPage } from "../../../support/pages/plantPage";
-import { addPlantPage } from "../../../support/pages/addPlantPage";
+import { loginAsAdmin } from "../../preconditions/login.preconditions";
+
+Given("I am logged in as Admin", () => {
+  loginAsAdmin();
+});
 
 let selectedPlantCategoryFilterName;
 let plantCategoryColumnIndex;
