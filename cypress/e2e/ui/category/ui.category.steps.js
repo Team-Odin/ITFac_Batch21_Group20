@@ -1071,10 +1071,6 @@ When("Enter {string} in search bar", (categoryName) => {
   }
 });
 
-When("Click {string} button", (buttonName) => {
-  clickNamedControl(buttonName);
-});
-
 Then("List update display only the {string} category", (expectedName) => {
   // Wait for the table to refresh
   categoryPage.categoriesTable.should("be.visible");
@@ -1311,17 +1307,6 @@ Then(
     });
   },
 );
-
-// Click the Reset/Search/Add Category button
-When("Click the {string} button", (buttonName) => {
-  if (buttonName === "Reset") {
-    categoryPage.resetBtn.first().click(); // Use .first() to target only one
-  } else if (buttonName === "Search") {
-    categoryPage.searchBtn.first().click({ multiple: true });
-  } else if (buttonName === "Add A Category" || buttonName === "Add Category") {
-    categoryPage.addCategoryBtn.first().click();
-  }
-});
 
 // Verify Parent Category filter is cleared
 Then("The {string} filter should be cleared", (filterName) => {
