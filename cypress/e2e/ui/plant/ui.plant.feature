@@ -1,5 +1,5 @@
 @ui @plant
-Feature: plant Management Module
+Feature: Plant Management Module
     As an admin or user
     I want to manage plants
     So that I can organize plants in the system
