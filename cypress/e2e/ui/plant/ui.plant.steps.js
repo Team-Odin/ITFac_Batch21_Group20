@@ -338,8 +338,6 @@ Given("I am logged in as an Admin or Non-Admin user", () => {
   const userUser = Cypress.env("USER_USER");
   const userPass = Cypress.env("USER_PASS");
 
-  // Prefer admin to keep this precondition stable across environments.
-  // If non-admin creds are available, either role is acceptable for this scenario.
   if (userUser && userPass) {
     loginAsUser();
     return;
@@ -400,14 +398,14 @@ Then("I should see the plant list table", () => {
 Then("I should see the {string} button", (/** @type {string} */ buttonText) => {
   const text = String(buttonText).replaceAll(/\s+/g, " ").trim();
 
-  if (/^add(\s+a)?\s+plant$/i.test(text)) {
+  if (/^add?\s+plant$/i.test(text)) {
     return plantPage.addPlantBtn
       .should("be.visible")
       .invoke("text")
       .then((actual) => {
         const actualNorm = normalizeText(actual);
         expect(actualNorm.toLowerCase(), "Add Plant button text").to.match(
-          /^add(\s+a)?\s+plant$/i,
+          /^add?\s+plant$/i,
         );
       });
   }
@@ -551,8 +549,7 @@ Then("Show {string} message", (/** @type {string} */ successMessage) => {
     return;
   }
 
-  // Some app builds don't render toast/alert messages for create flows.
-  // Make this assertion best-effort to avoid false negatives.
+
   if (/plant\s+created\s+successfully/i.test(message.trim())) {
     return cy.get("body").then(($body) => {
       const bodyText = normalizeText($body.text()).toLowerCase();
@@ -837,12 +834,6 @@ When("Plant quantity is less than {int}", (threshold) => {
 
   const desiredQty = Math.max(0, thresholdNum - 1);
 
-  // Ensure test data contains at least one low-stock plant.
-  // Non-admin UI can't create/update plants, so we do a best-effort admin API update.
-  // IMPORTANT: pick a plant that's visible on the current page.
-  // Some app builds render the table server-side (no XHR we can reliably wait for),
-  // so we select a visible plant name from the DOM and update that exact plant via API.
-
   plantPage.assertOnPlantsPage();
   plantPage.plantsTable.should("be.visible");
 
@@ -1025,29 +1016,68 @@ Then(
       );
     }
 
-    // Prefer explicit highlight signal (active class / aria-current),
-    // but fall back to a weaker check if the app doesn't implement highlighting.
-    return plantPage.plantsMenu.should("be.visible").then(($a) => {
-      const linkClasses = normalizeText($a.attr("class")).toLowerCase();
-      const ariaCurrent = String($a.attr("aria-current") || "").toLowerCase();
-      const liClasses = normalizeText(
-        $a.closest("li").attr("class"),
-      ).toLowerCase();
+    cy.location("pathname", { timeout: 10000 }).should("eq", "/ui/plants");
 
-      const isActive =
-        ariaCurrent === "page" ||
-        linkClasses.split(/\s+/g).includes("active") ||
-        liClasses.split(/\s+/g).includes("active");
+    const navLinkSelector =
+      "nav a, aside a, header a, [role='navigation'] a, .sidebar a, .nav a";
 
-      if (isActive) return;
+    return cy
+      .contains(navLinkSelector, /^\s*plants\s*$/i)
+      .should("be.visible")
+      .then(($a) => {
+        /** @param {JQuery<HTMLElement>} $el */
+        const classList = ($el) =>
+          normalizeText($el.attr("class"))
+            .toLowerCase()
+            .split(/\s+/g)
+            .filter(Boolean);
 
-      // Fallback: at least ensure we're on the Plants page and the Plants menu exists.
-      return cy.location("pathname", { timeout: 10000 }).then((pathname) => {
-        expect(pathname, "pathname when checking Plants nav").to.eq(
-          "/ui/plants",
+        const activeTokens = new Set([
+          "active",
+          "is-active",
+          "selected",
+          "is-selected",
+          "current",
+          "router-link-active",
+          "router-link-exact-active",
+          "mui-selected",
+          "ant-menu-item-selected",
+        ]);
+
+        const $li = $a.closest("li");
+        const $parent = $a.parent();
+        const $activeAncestor = $a.closest(
+          "[aria-current],[aria-selected],.active,.selected,.current",
         );
+
+        const ariaCurrent = String(
+          $a.attr("aria-current") || $activeAncestor.attr("aria-current") || "",
+        ).toLowerCase();
+        const ariaSelected = String(
+          $a.attr("aria-selected") ||
+            $activeAncestor.attr("aria-selected") ||
+            "",
+        ).toLowerCase();
+
+        const candidates = [$a, $li, $parent, $activeAncestor].filter(
+          (x) => x && x.length > 0,
+        );
+
+        const hasActiveClass = candidates.some(($el) =>
+          classList($el).some((cls) => activeTokens.has(cls)),
+        );
+
+        const isActive =
+          ariaCurrent === "page" ||
+          ariaCurrent === "true" ||
+          ariaSelected === "true" ||
+          hasActiveClass;
+
+        expect(
+          isActive,
+          `Expected 'Plants' nav item to be highlighted. aria-current='${ariaCurrent}', aria-selected='${ariaSelected}', classes='${classList($a).join(" ")}', liClasses='${classList($li).join(" ")}'`,
+        ).to.eq(true);
       });
-    });
   },
 );
 

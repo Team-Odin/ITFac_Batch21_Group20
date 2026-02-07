@@ -85,9 +85,9 @@ Feature: Plant Management Module
 		And Plant validation errors include:
 			"""
 			Price must be greater than 0
-			Plant name must be between 3 and 25 characters
+			Name is required
 			"""
-
+ 
 	@API/TC132
 	Scenario: API/TC132 Verify Plant Summary Data Retrieval
 		Given Admin has valid JWT token
