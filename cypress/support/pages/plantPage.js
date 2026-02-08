@@ -143,7 +143,8 @@ class PlantPage {
         return options.find((o) => o.text.toLowerCase() === desired)?.value;
       };
 
-      const chosen = selects.find((sel) => Boolean(findValue(sel))) ?? selects[0];
+      const chosen =
+        selects.find((sel) => Boolean(findValue(sel))) ?? selects[0];
       const value = findValue(chosen);
       if (!value) {
         throw new Error(
@@ -262,7 +263,10 @@ class PlantPage {
             return false;
 
           const rowText = this.normalizeSpaces(row.innerText).toLowerCase();
-          if (rowText.includes("no plants found") || rowText.includes("no data"))
+          if (
+            rowText.includes("no plants found") ||
+            rowText.includes("no data")
+          )
             return false;
 
           return true;

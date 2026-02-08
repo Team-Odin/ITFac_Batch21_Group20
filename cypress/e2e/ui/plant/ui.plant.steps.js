@@ -336,7 +336,9 @@ Given("Plants exist in the Plant list", () => {
 });
 
 When("Click on the {string} link in the navigation menu", (link) => {
-  const name = String(link ?? "").trim().toLowerCase();
+  const name = String(link ?? "")
+    .trim()
+    .toLowerCase();
 
   if (name === "plants" || name === "plant") {
     plantPage.plantsMenu.should("be.visible").first().click();
@@ -347,7 +349,9 @@ When("Click on the {string} link in the navigation menu", (link) => {
 });
 
 When("Click the {string} dropdown", (label) => {
-  const name = String(label ?? "").trim().toLowerCase();
+  const name = String(label ?? "")
+    .trim()
+    .toLowerCase();
   if (name.includes("category")) {
     return addPlantPage.categorySelect().then(($el) => {
       if ($el.is("select")) {
@@ -383,15 +387,14 @@ When("Scroll to the bottom of the plant list table", () => {
 });
 
 When("Click on the {string} page button", (label) => {
-  const direction = String(label ?? "").trim().toLowerCase();
+  const direction = String(label ?? "")
+    .trim()
+    .toLowerCase();
   if (direction !== "next") {
     throw new Error(`Unsupported pagination button: ${label}`);
   }
 
-  cy.get(".pagination")
-    .contains("Next")
-    .should("be.visible")
-    .click();
+  cy.get(".pagination").contains("Next").should("be.visible").click();
 });
 
 When("Select {string} from the Category dropdown", (category) => {
@@ -409,7 +412,9 @@ Then("The {string} button is NOT visible", (label) => {
 });
 
 Then("The {string} icon is visible for {string}", (iconLabel, plantName) => {
-  const action = String(iconLabel ?? "").trim().toLowerCase();
+  const action = String(iconLabel ?? "")
+    .trim()
+    .toLowerCase();
   const selector = action.includes("edit")
     ? 'a[title="Edit"], a[href*="/ui/plants/edit"], button[title="Edit"], .btn-outline-primary'
     : 'button[title="Delete"], a[title="Delete"], form[action*="/ui/plants/delete"] button, .btn-outline-danger';
@@ -592,10 +597,7 @@ Then("The column is sorted {string}", (direction) => {
 Then(
   "The system navigates back to the Plant list page {string}",
   (expectedUrl) => {
-    cy.location("pathname", { timeout: 10000 }).should(
-      "include",
-      expectedUrl,
-    );
+    cy.location("pathname", { timeout: 10000 }).should("include", expectedUrl);
     plantPage.assertPlantsTableVisible();
   },
 );

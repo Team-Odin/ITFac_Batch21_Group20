@@ -46,7 +46,6 @@ Given("I am logged in as User", () => {
   loginAsUser();
 });
 
-
 Given("I am on the {string} page", (/** @type {string} */ pageName) => {
   const page = String(pageName).trim().toLowerCase();
 
@@ -103,15 +102,18 @@ Given("A plant named {string} exists in the list", (plantName) => {
   if (!name) throw new Error("Plant name is required");
 
   plantPage.visitPlantPage();
-  return cy.get("table tbody").then(($tbody) => {
-    if ($tbody.text().includes(name)) return;
-    return addPlantPage.createPlantSimple(name, "100", "5");
-  }).then(() => {
-    plantPage.visitPlantPage();
-    cy.get("table tbody tr")
-      .contains("td", name, { timeout: 10000 })
-      .should("be.visible");
-  });
+  return cy
+    .get("table tbody")
+    .then(($tbody) => {
+      if ($tbody.text().includes(name)) return;
+      return addPlantPage.createPlantSimple(name, "100", "5");
+    })
+    .then(() => {
+      plantPage.visitPlantPage();
+      cy.get("table tbody tr")
+        .contains("td", name, { timeout: 10000 })
+        .should("be.visible");
+    });
 });
 
 const normalizeButton = (value) =>

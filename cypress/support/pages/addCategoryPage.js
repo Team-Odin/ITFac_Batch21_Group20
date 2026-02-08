@@ -25,7 +25,8 @@ class AddCategoryPage {
       .trim()
       .toLowerCase();
 
-    if (name === "save") return this.saveCategoryBtn.should("be.visible").click();
+    if (name === "save")
+      return this.saveCategoryBtn.should("be.visible").click();
     if (name === "cancel") return this.cancelBtn.should("be.visible").click();
 
     return cy
