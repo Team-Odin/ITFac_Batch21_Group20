@@ -8,6 +8,11 @@ class PlantPage {
     return cy.get("table");
   }
 
+  get addPlantBtn() {
+    // UI text may be "Add Plant" or "Add A Plant".
+    return cy.contains("a,button", /add\s+(a\s+)?plant/i);
+  }
+
   visit() {
     cy.visit("/ui/plants");
   }
@@ -30,6 +35,26 @@ class PlantPage {
       .within(() => {
         cy.get("td").should("not.contain", "No plants found");
       });
+  }
+
+  normalizeSpaces(value) {
+    return String(value ?? "")
+      .replaceAll(/\s+/g, " ")
+      .trim();
+  }
+
+  escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  getAddPlantButton(label) {
+    const text = this.normalizeSpaces(label || "Add Plant");
+    const pattern = new RegExp(`^${this.escapeRegExp(text)}$`, "i");
+    return cy.contains("a,button", pattern);
+  }
+
+  clickAddPlantButton(label) {
+    return this.getAddPlantButton(label).should("be.visible").click();
   }
 
   static apiLoginAsNonAdmin() {
@@ -76,10 +101,6 @@ class PlantPage {
   setAuthHeader(authHeader) {
     this.authHeader = authHeader;
   }
-
-  // ========================================
-  // Non-Admin API Methods (TC20-TC23)
-  // ========================================
 
   getAuthTokenNonAdmin() {
     return cy

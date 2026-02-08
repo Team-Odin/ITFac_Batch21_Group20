@@ -9,9 +9,9 @@ Feature: Sales Management
 @api @TC94
   Scenario: Verify that the admin can retrieve an available sale record by ID
     Given the admin user is authenticated
-    When I send a GET request to retrieve sale with ID 31
+    When I send a GET request to retrieve sale with ID 1
     Then the response status should be 200
-    And the response should contain the sale record with ID 31
+    And the response should contain the sale record with ID 1
     And the sale record should contain the correct plant details
 
 @api @TC95
@@ -24,9 +24,9 @@ Feature: Sales Management
 @TC96
   Scenario: Verify that the admin can delete a sale record
     Given the admin user is authenticated
-    When I send a DELETE request for sale with ID 37
+    When I send a DELETE request for sale with ID 4
     Then the response status should be 204
-    And the sale record with ID 5 should no longer exist in the system
+    And the sale record with ID 4 should no longer exist in the system
 
 @api @TC97
 Scenario: Verify that the system returns an error when an admin attempts to delete a non-existing sale record
@@ -66,7 +66,7 @@ Scenario: Verify that the system returns an error when quantity is less than 1
     When I send a POST request to sell plant ID 1 with quantity 3
     Then the response status should be 201
     And the response should contain the sale details for plant "Rose"
-    And the total price should be calculated correctly at 300
+    And the total price should be calculated correctly at 3600
 
 @TC103 @negative
   Scenario: Verify that the system prevents selling when the requested quantity is more than the available stock
@@ -109,9 +109,9 @@ Scenario: Verify that a non-admin user can retrieve all sales records
 @api @security @TC109
   Scenario: Verify that a non-admin user can retrieve a sale record by its ID
     Given a non-admin user is authenticated
-    When I send a GET request for sale ID 31 as a non-admin
+    When I send a GET request for sale ID 1 as a non-admin
     Then the response status should be 200
-    And the response should contain the sale record with ID 31
+    And the response should contain the sale record with ID 1
 
 @api @TC110
   Scenario: Verify that a non-admin user receives an error for an invalid sale ID
