@@ -5,10 +5,6 @@ import {
   Before,
   After,
 } from "@badeball/cypress-cucumber-preprocessor";
-import {
-  loginAsAdmin,
-  loginAsUser,
-} from "../../preconditions/login.preconditions";
 import { categoryPage } from "../../../support/pages/categoryPage";
 import { addCategoryPage } from "../../../support/pages/addCategoryPage";
 import dashboardPage from "../../../support/pages/dashboardPage";
@@ -330,17 +326,14 @@ Then("I should see the {string} button", (buttonText) => {
   const normalize = (s) =>
     String(s ?? "")
       .replaceAll(/\s+/g, " ")
-      .trim();
-  const canonicalize = (s) =>
-    normalize(s)
-      .toLowerCase()
-      .replace(/\badd\s+a\s+category\b/i, "add category");
+      .trim()
+      .toLowerCase();
 
   categoryPage.addCategoryBtn
     .should("be.visible")
     .invoke("text")
     .then((t) => {
-      expect(canonicalize(t)).to.eq(canonicalize(buttonText));
+      expect(normalize(t)).to.eq(normalize(buttonText));
     });
 });
 
