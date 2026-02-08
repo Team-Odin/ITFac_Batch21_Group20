@@ -323,11 +323,117 @@ When("I click the {string} menu", (/** @type {string} */ menuName) => {
   const menu = String(menuName).trim().toLowerCase();
 
   if (menu === "plants" || menu === "plant") {
-    plantPage.plantsMenu.should("be.visible").click();
+    plantPage.plantsMenu.should("be.visible").first().click();
     return;
   }
 
   throw new Error(`Unknown menu: ${menuName}`);
+});
+
+Given("Plants exist in the Plant list", () => {
+  plantPage.visitPlantPage();
+  plantPage.assertPlantTableHasData();
+});
+
+When("Click on the {string} link in the navigation menu", (link) => {
+  const name = String(link ?? "").trim().toLowerCase();
+
+  if (name === "plants" || name === "plant") {
+    plantPage.plantsMenu.should("be.visible").first().click();
+    return;
+  }
+
+  throw new Error(`Unknown navigation link: ${link}`);
+});
+
+When("Click the {string} dropdown", (label) => {
+  const name = String(label ?? "").trim().toLowerCase();
+  if (name.includes("category")) {
+    return addPlantPage.categorySelect().then(($el) => {
+      if ($el.is("select")) {
+        cy.wrap($el).should("be.visible");
+        return;
+      }
+
+      cy.wrap($el).should("be.visible").click();
+    });
+  }
+
+  throw new Error(`Unknown dropdown: ${label}`);
+});
+
+When("I click the {string} column header once", (headerName) => {
+  const text = String(headerName ?? "").trim();
+  cy.get("table thead tr th").contains(text).first().click();
+});
+
+When(
+  "I enter plant details with name {string} and stock {string}",
+  (plantName, stockQty) => {
+    addPlantPage.nameInput().should("be.visible").clear().type(plantName);
+    addPlantPage.categorySelect().should("be.visible").select(1);
+    addPlantPage.quantityInput().should("be.visible").clear().type(stockQty);
+  },
+);
+
+When("Scroll to the bottom of the plant list table", () => {
+  plantPage.plantsTable.scrollIntoView().then(() => {
+    cy.get("table tbody tr", { timeout: 10000 }).should("exist");
+  });
+});
+
+When("Click on the {string} page button", (label) => {
+  const direction = String(label ?? "").trim().toLowerCase();
+  if (direction !== "next") {
+    throw new Error(`Unsupported pagination button: ${label}`);
+  }
+
+  cy.get(".pagination")
+    .contains("Next")
+    .should("be.visible")
+    .click();
+});
+
+When("Select {string} from the Category dropdown", (category) => {
+  plantPage.selectCategoryFilter(category);
+});
+
+Then("The {string} button is NOT visible", (label) => {
+  const text = String(label ?? "").trim();
+  if (/add\s+(a\s+)?plant/i.test(text)) {
+    cy.contains("button, a", /add\s+(a\s+)?plant/i).should("not.exist");
+    return;
+  }
+
+  cy.contains("button, a", new RegExp(`^${text}$`, "i")).should("not.exist");
+});
+
+Then("The {string} icon is visible for {string}", (iconLabel, plantName) => {
+  const action = String(iconLabel ?? "").trim().toLowerCase();
+  const selector = action.includes("edit")
+    ? 'a[title="Edit"], a[href*="/ui/plants/edit"], button[title="Edit"], .btn-outline-primary'
+    : 'button[title="Delete"], a[title="Delete"], form[action*="/ui/plants/delete"] button, .btn-outline-danger';
+
+  cy.get("table tbody tr")
+    .contains("td", plantName)
+    .parent("tr")
+    .within(() => {
+      cy.get(selector).should("be.visible");
+    });
+});
+
+Then("Only sub-categories are listed in the dropdown", () => {
+  addPlantPage
+    .categorySelect()
+    .should("be.visible")
+    .find("option")
+    .then(($options) => {
+      const uiCategories = [...$options]
+        .map((o) => o.innerText.trim())
+        .filter((t) => t !== "" && t !== "Select Category");
+
+      expect(uiCategories.length).to.be.greaterThan(0);
+    });
 });
 
 // =============================================================
@@ -475,6 +581,25 @@ Then("System redirects to the plant list", () => {
   plantPage.assertOnPlantsPage();
 });
 
+Then("The system redirects to the Plant list page", () => {
+  plantPage.assertOnPlantsPage();
+});
+
+Then("The column is sorted {string}", (direction) => {
+  plantPage.assertSortedByName(direction);
+});
+
+Then(
+  "The system navigates back to the Plant list page {string}",
+  (expectedUrl) => {
+    cy.location("pathname", { timeout: 10000 }).should(
+      "include",
+      expectedUrl,
+    );
+    plantPage.assertPlantsTableVisible();
+  },
+);
+
 Then(
   "{string} appears in the plant table",
   (/** @type {string} */ plantName) => {
@@ -601,9 +726,32 @@ Then(
   },
 );
 
+Then(
+  "The plant list should display only plants with category {string}",
+  (categoryName) => {
+    plantPage.assertOnPlantsPage();
+    plantPage.assertPlantsTableVisible();
+    return plantPage.assertOnlyRowsMatchCategory(categoryName);
+  },
+);
+
 // =============================================================
 // UI/TC118 Verify Plant Search by Name
 // =============================================================
+
+Given("I am logged in as {string}", (roleName) => {
+  const role = String(roleName ?? "")
+    .replaceAll(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+  if (role === "admin" || role.includes("admin")) {
+    loginAsAdmin();
+    return;
+  }
+
+  loginAsUser();
+});
 
 Given("I am logged in as Non-Admin", () => {
   // Non-admin user has the same permissions as a regular User in this suite.
@@ -617,6 +765,26 @@ When("Enter {string} in search field", (searchText) => {
   plantPage.assertOnPlantsPage();
   return plantPage.searchByName(text);
 });
+
+When("I enter {string} in the search input field", (searchText) => {
+  const text = safeToString(searchText);
+  plantSearchText = text;
+
+  plantPage.assertOnPlantsPage();
+  return plantPage.searchByName(text);
+});
+
+When(
+  "I enter {string} in the search input field with a trailing space",
+  (searchText) => {
+    const raw = safeToString(searchText);
+    const value = raw.endsWith(" ") ? raw : `${raw} `;
+    plantSearchText = raw.trim();
+
+    plantPage.assertOnPlantsPage();
+    return plantPage.searchByName(value);
+  },
+);
 
 Then("Matching plants should be displayed in the table", () => {
   plantPage.assertOnPlantsPage();

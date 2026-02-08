@@ -29,6 +29,23 @@ class CategoryPage {
     return cy.get('a[href="/ui/categories"]');
   }
 
+  clickControl(label) {
+    const name = String(label ?? "")
+      .replaceAll(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+
+    if (name === "search") return this.searchBtn.should("be.visible").click();
+    if (name === "reset") return this.resetBtn.should("be.visible").click();
+    if (name.includes("add") && name.includes("category"))
+      return this.addCategoryBtn.should("be.visible").click();
+
+    return cy
+      .contains("button, a", new RegExp(`^${name}$`, "i"))
+      .should("be.visible")
+      .click();
+  }
+
   get parentCategoryFilterDropdown() {
     return cy.get('select[name="parentId"]');
   }

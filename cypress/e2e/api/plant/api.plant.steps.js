@@ -403,6 +403,13 @@ Then("Response contains {string}: {string}", (key, expectedValue) => {
   expect(String(lastResponse.body[k])).to.eq(expected);
 });
 
+Then("Response contains {string}", (expectedText) => {
+  expect(lastResponse, "lastResponse should exist").to.exist;
+  const haystack = safeStringify(lastResponse.body).toLowerCase();
+  const needle = String(expectedText ?? "").toLowerCase();
+  expect(haystack).to.include(needle);
+});
+
 Then("The plant is persisted in the database", () => {
   if (!createdPlantId) {
     throw new Error(

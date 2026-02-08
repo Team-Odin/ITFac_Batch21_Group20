@@ -19,6 +19,21 @@ class AddCategoryPage {
     return cy.get('a[href="/ui/categories"]').contains("Cancel");
   }
 
+  clickControl(label) {
+    const name = String(label ?? "")
+      .replaceAll(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+
+    if (name === "save") return this.saveCategoryBtn.should("be.visible").click();
+    if (name === "cancel") return this.cancelBtn.should("be.visible").click();
+
+    return cy
+      .contains("button, a", new RegExp(`^${name}$`, "i"))
+      .should("be.visible")
+      .click();
+  }
+
   addACategory(categoryValue) {
     this.categoryNameField.should("be.visible").clear().type(categoryValue);
   }
