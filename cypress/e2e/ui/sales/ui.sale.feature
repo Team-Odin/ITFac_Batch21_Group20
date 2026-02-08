@@ -43,11 +43,11 @@ Scenario: Hide Delete action for non-admin user
   And the Delete action should not be displayed
 
 @admin @tc83
-  Scenario: Show Delete action for admin user only when records exist
-    Given I am logged in as admin user
-    And I am on the Sales page
-    Then if there are sale records, the Delete action should be displayed
-    But if there are no sale records, the Delete action should not be visible
+Scenario: Show Delete action for admin user only when records exist
+  Given I am logged in as admin user
+  And I am on the Sales page
+  Then if there are sale records, the Delete action should be displayed
+  But if there are no sale records, the Delete action should not be visible
 
 @non-admin @tc78
 Scenario: Sort sales by plant name
@@ -98,14 +98,14 @@ Scenario: Verify plant selection is mandatory
   Then an error message "Plant is required" should be displayed for plant
 
 @admin @tc88
-  Scenario: Verify that the sell operation works correctly with dynamic data
-    Given I am logged in as admin user
-    And I am on the Sell Plant page
-    When I select the first available plant from the dropdown
-    And I enter a valid sell quantity based on available stock
-    And I click the submit button
-    Then I should be redirected to the Sales List page
-    And the latest sale should show the correct plant and quantity
+Scenario: Verify that the sell operation works correctly with dynamic data
+  Given I am logged in as admin user
+  And I am on the Sell Plant page
+  When I select the first available plant from the dropdown
+  And I enter a valid sell quantity based on available stock
+  And I click the submit button
+  Then I should be redirected to the Sales List page
+  And the latest sale should show the correct plant and quantity
 
 @admin @tc89
 Scenario: Verify plant dropdown displays names and stock levels
