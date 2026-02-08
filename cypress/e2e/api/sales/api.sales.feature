@@ -96,7 +96,7 @@ Scenario: Verify that a non-admin user cannot perform a sell plant operation
 @api @TC107
 Scenario: Verify that a non-admin user cannot delete a sale record
     Given a non-admin user is authenticated
-    When I send a DELETE request for sale ID 35 as a non-admin
+    When I send a DELETE request for sale ID 5 as a non-admin
     Then the response status should be 403
 
 @api @TC108
